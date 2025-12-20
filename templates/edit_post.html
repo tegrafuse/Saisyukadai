@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Edit Post</h1>
+  <form action="" method="post">
+    <textarea name="body" rows="5" cols="60">{{ post.body }}</textarea><br>
+    <button type="submit">Save</button>
+  </form>
+  <a href="{{ url_for('main.view_post', post_id=post.id) }}">Cancel</a>
+{% endblock %}

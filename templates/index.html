@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Feed</h1>
+
+  {% if g.user %}
+  <form action="{{ url_for('main.create_post') }}" method="post">
+    <textarea name="body" rows="3" cols="60"></textarea><br>
+    <button type="submit">Post</button>
+  </form>
+
+  <form action="{{ url_for('main.upload_image') }}" method="post" enctype="multipart/form-data">
+    <input type="file" name="image"> Caption: <input name="caption">
+    <button type="submit">Upload Image</button>
+  </form>
+  {% else %}
+    <p><em>ログインして投稿できます。</em></p>
+  {% endif %}
+
+  <h2>Images</h2>
+  <ul>
+    {% for im in images %}
+      <li>
+        <strong>{{ im.uploader.username }}</strong>: <a href="{{ url_for('main.uploaded_file', filename=im.filename) }}">{{ im.filename }}</a>
+        {% if im.caption %} - {{ im.caption }}{% endif %}
+        <small>{{ im.created_at }}</small>
+        {% if g.user and g.user.id == im.user_id %}
+          <form action="{{ url_for('main.delete_image', image_id=im.id) }}" method="post" style="display:inline">
+            <button type="submit">Delete</button>
+          </form>
+        {% endif %}
+      </li>
+    {% else %}
+      <li>No images yet.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>Posts</h2>
+  <ul>
+    {% for p in posts %}
+      <li>
+        <strong>{{ p.author.username }}</strong>: {{ p.body }} <small>{{ p.created_at }}</small>
+        {% if g.user and g.user.id == p.user_id %}
+          <a href="{{ url_for('main.edit_post', post_id=p.id) }}">Edit</a>
+          <form action="{{ url_for('main.delete_post', post_id=p.id) }}" method="post" style="display:inline">
+            <button type="submit">Delete</button>
+          </form>
+        {% endif %}
+      </li>
+    {% else %}
+      <li>No posts yet.</li>
+    {% endfor %}
+  </ul>
+
+{% endblock %}
