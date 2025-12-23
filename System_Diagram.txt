@@ -1,0 +1,51 @@
+graph TD
+    %% 定義: 外部ユーザー
+    User[ユーザー / ブラウザ (Client)]
+
+    %% 定義: 開発・運用ツール群
+    subgraph "開発・運用ユーティリティ (ルートディレクトリ)"
+        Docs[README.md / requirements.txt]
+        BatScripts[Windowsバッチスクリプト群<br>init_and_push, run_server 等]
+    end
+
+    %% 定義: メインアプリケーションプロセス
+    subgraph "Webアプリケーションサーバー (Python)"
+        RunPy[run.py<br>(エントリーポイント/サーバー起動)]
+
+        subgraph "アプリケーションコア (app/)"
+            AppInit[__init__.py<br>(アプリ初期化)]
+            Routes[routes.py<br>(ルーティング / コントローラーロジック)]
+        end
+
+        Models[models.py<br>(データモデル / データベース定義)]
+    end
+
+    %% 定義: プレゼンテーション層
+    subgraph "プレゼンテーション層 (templates/)"
+        Templates[HTMLテンプレート群<br>base, index, login, register, etc.]
+    end
+
+    %% --- 関係性の定義 ---
+
+    %% ユーザーからのアクセス
+    User -- "HTTPリクエスト" --> RunPy
+
+    %% アプリケーションの起動と処理の流れ
+    BatScripts -.->|"起動/管理"| RunPy
+    RunPy --> AppInit
+    AppInit --> Routes
+
+    %% ロジックとデータのやり取り
+    Routes -- "データの読み書き" --> Models
+
+    %% ロジックと画面描画
+    Routes -- "レンダリング指示" --> Templates
+    Templates -- "HTMLレスポンス" --> User
+
+    %% スタイル定義 (見やすくするため)
+    classDef fileComponent fill:#f9f,stroke:#333,stroke-width:2px,color:black;
+    classDef subSystem fill:#e1f5fe,stroke:#0288d1,color:black;
+    classDef external fill:#fff3e0,stroke:#ff9800,color:black;
+
+    class RunPy,AppInit,Routes,Models,Templates,Docs,BatScripts fileComponent;
+    class User external;
