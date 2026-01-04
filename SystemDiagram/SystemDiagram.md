@@ -1,5 +1,5 @@
 ```mermaid
-graph TD;
+graph LR;
     Root["📁 project_root (Root)"]
     
     %% Python core files
