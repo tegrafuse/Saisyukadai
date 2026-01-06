@@ -1,0 +1,54 @@
+/* Modern minimal styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+:root{
+  --bg:#f6f8fa;
+  --card:#ffffff;
+  --muted:#6b7280;
+  --primary:#2563eb; /* indigo-600 */
+  --radius:12px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  background:var(--bg);
+  color:#0f172a;
+  -webkit-font-smoothing:antialiased;
+}
+.container{max-width:1100px;margin:32px auto;padding:0 16px}
+.navbar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:transparent}
+.brand{font-weight:700;color:var(--primary);letter-spacing:-0.2px}
+.card{background:var(--card);border-radius:var(--radius);box-shadow:0 6px 18px rgba(12,15,22,0.06);padding:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}
+.post-card{padding:18px;border-radius:12px;background:linear-gradient(180deg,#fff,#fbfdff);}
+.post-title{font-size:18px;font-weight:600;margin-bottom:6px}
+.post-meta{font-size:13px;color:var(--muted);margin-bottom:10px}
+.form-card{max-width:640px;margin:20px auto;padding:22px}
+.btn{display:inline-block;padding:10px 14px;border-radius:10px;background:var(--primary);color:#fff;text-decoration:none;border:none;cursor:pointer}
+.btn.secondary{background:#f3f4f6;color:#111}
+.input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;background:#fff}
+.header{display:flex;align-items:center;gap:14px}
+.logo{width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,var(--primary),#7c3aed)}
+.footer{text-align:center;color:var(--muted);font-size:14px;margin:40px 0}
+@media (max-width:520px){
+  .container{margin:16px auto;padding:0 12px}
+}
+
+/* Twitter-like tweaks */
+.list{display:flex;flex-direction:column}
+.post-card{padding:14px;border-radius:12px;background:var(--card);}
+.post-card .logo{width:48px;height:48px;border-radius:50%;}
+.post-title{font-weight:700}
+.post-meta{font-size:12px;color:var(--muted)}
+.post-card img{max-height:420px;object-fit:cover;border-radius:12px}
+.form-card{max-width:760px;margin:20px auto;padding:18px;border-radius:12px}
+.form-card .logo{width:48px;height:48px;border-radius:50%}
+.form-control-sm{padding:.25rem .5rem;border-radius:8px}
+
+/* chat/messages */
+.chat{display:flex;flex-direction:column;gap:8px}
+.bubble{padding:10px 14px;border-radius:16px;display:inline-block}
+.bubble-left{background:#f1f5f9;border-radius:12px 12px 12px 4px}
+.bubble-right{background:var(--primary);color:#fff;border-radius:12px 12px 4px 12px}
+

@@ -6,7 +6,9 @@ from models import db
 def create_app(config_object=None):
     # Use project-level templates directory (project_root/templates)
     templates_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates'))
-    app = Flask(__name__, template_folder=templates_path)
+    # Serve project-level static folder (project_root/static)
+    static_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'static'))
+    app = Flask(__name__, template_folder=templates_path, static_folder=static_path, static_url_path='/static')
     app.config['SECRET_KEY'] = 'dev'
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sns.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -22,5 +24,8 @@ def create_app(config_object=None):
         from app import routes  # imports views
         app.register_blueprint(routes.bp)
         db.create_all()
+
+        # NOTE: Schema changes are intentionally not applied automatically.
+        # If you add/remove columns, run migrations manually with your preferred tool.
 
     return app

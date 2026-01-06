@@ -1,25 +1,100 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h1>Messages</h1>
-  <form action="{{ url_for('main.messages') }}" method="post">
-    <textarea name="body" rows="3" cols="60"></textarea><br>
-    Recipient (username, optional): <input name="recipient"><br>
-    <button type="submit">Send</button>
-  </form>
+  <div class="row">
+    <div class="col-md-4">
+      <h5>Conversations</h5>
+      <div class="list-group">
+        <a href="{{ url_for('main.messages') }}" class="list-group-item list-group-item-action {% if not request.args.get('username') %}active{% endif %}">
+          <div class="fw-bold">New message</div>
+          <div class="text-muted small">Start a message to any user</div>
+        </a>
+        {% for p in partners %}
+          {% if p.user %}
+            <a href="{{ url_for('main.messages', username=p.user.username) }}" class="list-group-item list-group-item-action d-flex align-items-center {% if request.args.get('username') == p.user.username %}active{% endif %}">
+              {% if p.user.avatar_filename %}
+                <img src="{{ url_for('main.uploaded_file', filename=p.user.avatar_filename) }}" class="rounded-circle me-2" style="width:40px;height:40px;object-fit:cover">
+              {% else %}
+                <div class="logo me-2" style="width:40px;height:40px;border-radius:50%"></div>
+              {% endif %}
+              <div>
+                <div class="fw-bold">{{ p.user.display_name or p.user.username }}</div>
+                <div class="text-muted small">{{ p.last.body[:60] }}</div>
+              </div>
+            </a>
+          {% else %}
+            <div class="list-group-item">Broadcasts</div>
+          {% endif %}
+        {% else %}
+          <div class="list-group-item">No conversations yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="col-md-8">
+      <h5>Messages</h5>
+      {% if other %}
+        <div class="card p-3" style="min-height:500px">
+          <h5>Conversation with {{ other.display_name or other.username }}</h5>
+          <div class="chat mt-3">
+            {% for m in messages_thread %}
+              {% if m.sender_id == g.user.id %}
+                <div class="d-flex mb-2 justify-content-end">
+                  <div class="me-2 text-end" style="max-width:70%">
+                    <div class="bubble bubble-right">{{ m.body }}</div>
+                    <div class="text-muted small mt-1">{{ m.created_at }}</div>
+                  </div>
+                  <div>
+                    {% if g.user.avatar_filename %}
+                      <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                    {% else %}
+                      <div class="logo" style="width:36px;height:36px"></div>
+                    {% endif %}
+                  </div>
+                </div>
+              {% else %}
+                <div class="d-flex mb-2">
+                  <div>
+                    {% if other.avatar_filename %}
+                      <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                    {% else %}
+                      <div class="logo" style="width:36px;height:36px"></div>
+                    {% endif %}
+                  </div>
+                  <div class="ms-2" style="max-width:70%">
+                    <div class="bubble bubble-left">{{ m.body }}</div>
+                    <div class="text-muted small mt-1">{{ m.created_at }}</div>
+                  </div>
+                </div>
+              {% endif %}
+            {% else %}
+              <div class="text-muted">No messages yet. Say hi!</div>
+            {% endfor %}
+          </div>
 
-  <ul>
-    {% for m in messages %}
-      <li>
-        <strong>{{ m.sender.username }}</strong> to {% if m.recipient_id %}{{ users.get(m.recipient_id) }}{% else %}<em>All</em>{% endif %}: {{ m.body }} <small>{{ m.created_at }}</small>
-        {% if g.user and g.user.id == m.sender_id %}
-          <form action="{{ url_for('main.delete_message', msg_id=m.id) }}" method="post" style="display:inline">
-            <button type="submit">Delete</button>
+          <div class="mt-4">
+            <form action="{{ url_for('main.messages') }}" method="post">
+              <input type="hidden" name="recipient" value="{{ other.username }}">
+              <div class="mb-2">
+                <textarea name="body" rows="3" class="input" placeholder="Write a message..."></textarea>
+              </div>
+              <button type="submit" class="btn">Send</button>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <div class="card p-3" style="min-height:400px">
+          <p class="text-muted">Select a conversation from the left or use the compose box below (recipient by username).</p>
+          <form action="{{ url_for('main.messages') }}" method="post">
+            <div class="mb-2">
+              <input name="recipient" class="input" placeholder="Recipient username (leave empty for broadcast)">
+            </div>
+            <div class="mb-2">
+              <textarea name="body" rows="3" class="input" placeholder="Write a message..."></textarea>
+            </div>
+            <button type="submit" class="btn">Send</button>
           </form>
-        {% endif %}
-      </li>
-    {% else %}
-      <li>No messages.</li>
-    {% endfor %}
-  </ul>
+        </div>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}

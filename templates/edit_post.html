@@ -1,10 +1,35 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h1>Edit Post</h1>
-  <form action="" method="post">
-    <textarea name="body" rows="5" cols="60">{{ post.body }}</textarea><br>
-    <button type="submit">Save</button>
-  </form>
-  <a href="{{ url_for('main.view_post', post_id=post.id) }}">Cancel</a>
+  <div class="card form-card">
+    <h2 class="h5">Edit Post</h2>
+    <form action="" method="post" enctype="multipart/form-data">
+      <div class="mb-2">
+        <textarea name="body" rows="5" class="input">{{ post.body }}</textarea>
+      </div>
+
+      {% if post.image_filename %}
+        <div class="mb-2">
+          <img src="{{ url_for('main.uploaded_file', filename=post.image_filename) }}" class="img-fluid rounded" style="max-width:320px">
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="remove_image" id="remove_image" value="1">
+            <label class="form-check-label" for="remove_image">画像を削除</label>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="mb-2">
+        <label class="form-label">新しい画像をアップロード（上書き）</label>
+        <input type="file" name="image" accept="image/*" class="form-control">
+      </div>
+      <div class="mb-2">
+        <input name="image_caption" class="input" placeholder="画像のキャプション（任意）" value="{{ post.image_caption or '' }}">
+      </div>
+
+      <div class="mt-3">
+        <button type="submit" class="btn">Save</button>
+        <a href="{{ url_for('main.view_post', post_id=post.id) }}" class="btn btn-sm secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
 {% endblock %}

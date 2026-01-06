@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="card p-3" style="min-height:500px">
+    <h5>Conversation with {{ other.display_name or other.username }}</h5>
+    <div class="chat mt-3">
+      {% for m in messages %}
+        {% if m.sender_id == g.user.id %}
+          <div class="d-flex mb-2 justify-content-end">
+            <div class="me-2 text-end" style="max-width:70%">
+              <div class="bubble bubble-right">{{ m.body }}</div>
+              <div class="text-muted small mt-1">{{ m.created_at }}</div>
+            </div>
+            <div>
+              {% if g.user.avatar_filename %}
+                <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+              {% else %}
+                <div class="logo" style="width:36px;height:36px"></div>
+              {% endif %}
+            </div>
+          </div>
+        {% else %}
+          <div class="d-flex mb-2">
+            <div>
+              {% if other.avatar_filename %}
+                <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+              {% else %}
+                <div class="logo" style="width:36px;height:36px"></div>
+              {% endif %}
+            </div>
+            <div class="ms-2" style="max-width:70%">
+              <div class="bubble bubble-left">{{ m.body }}</div>
+              <div class="text-muted small mt-1">{{ m.created_at }}</div>
+            </div>
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="text-muted">No messages yet. Say hi!</div>
+      {% endfor %}
+    </div>
+
+    <div class="mt-4">
+      <form action="{{ url_for('main.messages_with', username=other.username) }}" method="post">
+        <div class="mb-2">
+          <textarea name="body" rows="3" class="input" placeholder="Write a message..."></textarea>
+        </div>
+        <button type="submit" class="btn">Send</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

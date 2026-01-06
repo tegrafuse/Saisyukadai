@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="card form-card mx-auto">
+    <h2 class="h5">Settings</h2>
+    <form action="{{ url_for('main.settings') }}" method="post" enctype="multipart/form-data">
+      <div class="mb-2">
+        <input name="display_name" class="input" placeholder="表示名（任意）" value="{{ g.user.display_name or '' }}">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">自己紹介（任意）</label>
+        <textarea name="bio" class="input" rows="4">{{ bio or '' }}</textarea>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Avatar</label>
+        <input id="settings-avatar-input" class="avatar-input form-control" data-preview-target="settings-avatar-preview" type="file" name="avatar" accept="image/*">
+        <div id="settings-avatar-preview" style="display:none;margin-top:8px">
+          <img src="#" id="settings-avatar-img" class="rounded" style="width:64px;height:64px;object-fit:cover">
+          <button type="button" id="settings-avatar-remove" class="btn btn-sm secondary">削除</button>
+        </div>
+        {% if g.user.avatar_filename %}
+          <div class="mt-2" id="current-avatar-block-settings">
+            <img id="current-avatar-img-settings" src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded" style="width:64px;height:64px;object-fit:cover">
+            <input type="hidden" name="remove_avatar" id="remove_avatar_input_settings" value="">
+            <div class="mt-2">
+              <button type="button" id="remove_avatar_button" class="btn btn-sm btn-outline-danger">Delete avatar</button>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+      <button type="submit" class="btn">Save</button>
+    </form>
+  </div>
+{% endblock %}

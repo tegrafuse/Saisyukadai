@@ -1,10 +1,27 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h1>Register</h1>
-  <form action="{{ url_for('main.register') }}" method="post">
-    <label>Username: <input name="username"></label><br>
-    <label>Password: <input name="password" type="password"></label><br>
-    <button type="submit">Register</button>
-  </form>
+  <div class="card form-card mx-auto">
+    <h2 class="h5">Create account</h2>
+    <form action="{{ url_for('main.register') }}" method="post" enctype="multipart/form-data">
+      <div class="mb-2">
+        <input name="username" class="input" placeholder="Username">
+      </div>
+      <div class="mb-2">
+        <input name="display_name" class="input" placeholder="表示名（任意）">
+      </div>
+      <div class="mb-2">
+        <input name="password" type="password" class="input" placeholder="Password">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Avatar (optional)</label>
+        <input id="register-avatar-input" type="file" name="avatar" accept="image/*" class="form-control">
+        <div id="register-avatar-preview" style="display:none;margin-top:8px">
+          <img src="#" id="register-avatar-img" class="rounded" style="width:64px;height:64px;object-fit:cover">
+          <button type="button" id="register-avatar-remove" class="btn btn-sm secondary">削除</button>
+        </div>
+      </div>
+      <button type="submit" class="btn">Register</button>
+    </form>
+  </div>
 {% endblock %}
