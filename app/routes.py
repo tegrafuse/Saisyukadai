@@ -27,14 +27,36 @@ def _write_profiles(d):
 
 
 def get_profile_bio(username):
-    return _read_profiles().get(username, {}).get('bio')
+    val = _read_profiles().get(username, {}).get('bio')
+    # normalize non-meaningful values to None
+    if not val or (isinstance(val, str) and val.strip().lower() in ('none','null')):
+        return None
+    return val
 
 
 def set_profile_bio(username, bio):
     p = _read_profiles()
-    p.setdefault(username, {})
-    p[username]['bio'] = bio
+    # if bio is falsy (None or empty string), remove the user's bio entry to avoid stale defaults
+    if not bio:
+        if username in p:
+            try:
+                del p[username]['bio']
+                # if the user object has no other keys, remove the user entirely
+                if not p[username]:
+                    del p[username]
+            except KeyError:
+                pass
+    else:
+        p.setdefault(username, {})
+        p[username]['bio'] = bio
     _write_profiles(p)
+
+
+def remove_profile(username):
+    p = _read_profiles()
+    if username in p:
+        del p[username]
+        _write_profiles(p)
 
 bp = Blueprint('main', __name__)
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -160,6 +182,8 @@ def register():
             u.avatar_filename = unique
         db.session.add(u)
         db.session.commit()
+        # ensure there is no stale profile bio data for this username
+        remove_profile(u.username)
         session['user_id'] = u.id
         flash('Registered and logged in.')
         return redirect(url_for('main.index'))
