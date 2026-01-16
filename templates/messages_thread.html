@@ -2,14 +2,19 @@
 
 {% block content %}
   <div class="card p-3" style="min-height:500px">
-    <h5>Conversation with {{ other.display_name or other.username }}</h5>
-    <div class="chat mt-3">
+    <h5>{{ other.display_name or other.username }}さんとの会話</h5>
+    <div class="chat mt-3" style="max-height:500px;overflow-y:auto">
       {% for m in messages %}
-        {% if m.sender_id == g.user.id %}
-          <div class="d-flex mb-2 justify-content-end">
+        <div class="d-flex mb-2" {% if m.sender_id == g.user.id %}style="justify-content:flex-end"{% endif %} data-message-id="{{ m.id }}">
+          {% if m.sender_id == g.user.id %}
             <div class="me-2 text-end" style="max-width:70%">
               <div class="bubble bubble-right">{{ m.body }}</div>
-              <div class="text-muted small mt-1">{{ m.created_at }}</div>
+              <div class="text-muted small mt-1">
+                {{ m.created_at }}
+                {% if m.recipient_id and m.is_read %}
+                  <span class="ms-1 text-info" title="Read at {{ m.read_at }}">✓✓</span>
+                {% endif %}
+              </div>
             </div>
             <div>
               {% if g.user.avatar_filename %}
@@ -18,9 +23,7 @@
                 <div class="logo" style="width:36px;height:36px"></div>
               {% endif %}
             </div>
-          </div>
-        {% else %}
-          <div class="d-flex mb-2">
+          {% else %}
             <div>
               {% if other.avatar_filename %}
                 <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
@@ -32,20 +35,27 @@
               <div class="bubble bubble-left">{{ m.body }}</div>
               <div class="text-muted small mt-1">{{ m.created_at }}</div>
             </div>
-          </div>
-        {% endif %}
+          {% endif %}
+        </div>
       {% else %}
-        <div class="text-muted">No messages yet. Say hi!</div>
+        <div class="text-muted">メッセージがありません。挨拶をしましょう！</div>
       {% endfor %}
     </div>
 
     <div class="mt-4">
       <form action="{{ url_for('main.messages_with', username=other.username) }}" method="post">
         <div class="mb-2">
-          <textarea name="body" rows="3" class="input" placeholder="Write a message..."></textarea>
+          <textarea name="body" rows="3" class="input" placeholder="メッセージを入力..."></textarea>
         </div>
-        <button type="submit" class="btn">Send</button>
+        <button type="submit" class="btn">送信</button>
       </form>
     </div>
   </div>
+
+  <input type="hidden" id="thread-username-data" value="{{ other.username }}">
+  <script>
+    document.body.dataset.currentUserId = "{{ g.user.id }}";
+    document.body.dataset.otherUsername = "{{ other.username }}";
+  </script>
+  <script src="{{ url_for('static', filename='js/realtime_messages.js') }}"></script>
 {% endblock %}

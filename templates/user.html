@@ -17,9 +17,9 @@
         </div>
         <div>
           {% if g.user and g.user.id == user.id %}
-            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editProfileModal">Edit profile</button>
+            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editProfileModal">プロフィール編集</button>
           {% elif g.user and g.user.username != user.username %}
-            <a href="{{ url_for('main.messages', username=user.username) }}" class="btn btn-sm btn-outline-primary">Message</a>
+            <a href="{{ url_for('main.messages', username=user.username) }}" class="btn btn-sm btn-outline-primary">メッセージ送信</a>
           {% endif %}
         </div>
       </div>
@@ -33,7 +33,7 @@
         <form action="{{ url_for('main.settings') }}" method="post" enctype="multipart/form-data">
           <input type="hidden" name="next" value="{{ request.path }}">
           <div class="modal-header">
-            <h5 class="modal-title" id="editProfileModalLabel">Edit profile</h5>
+            <h5 class="modal-title" id="editProfileModalLabel">プロフィール編集</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
@@ -52,7 +52,7 @@
                 <img id="current-avatar-img-modal" src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded" style="width:64px;height:64px;object-fit:cover">
                 <input type="hidden" name="remove_avatar" id="remove_avatar_input_modal" value="">
                 <div class="mt-2">
-                  <button type="button" id="remove_avatar_modal_button" class="btn btn-sm btn-outline-danger">Delete avatar</button>
+                  <button type="button" id="remove_avatar_modal_button" class="btn btn-sm btn-outline-danger">アバターを削除</button>
                 </div>
               </div>
             {% endif %}

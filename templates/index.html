@@ -2,91 +2,209 @@
 
 {% block content %}
   <div class="d-flex align-items-center justify-content-between mb-3">
-    <h1 class="h3">Feed</h1>
+    <h1 class="h3">フィード</h1>
   </div>
 
-  {% if g.user %}
-  <div class="card form-card mb-4">
-    <form action="{{ url_for('main.create_post') }}" method="post" enctype="multipart/form-data">
-      <div class="d-flex gap-3">
-        {% if g.user and g.user.avatar_filename %}
-          <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:48px;height:48px;object-fit:cover" alt="avatar">
-        {% else %}
-          <div class="logo" aria-hidden="true"></div>
-        {% endif %}
-        <div style="flex:1">
-          <div class="mb-2">
-            <textarea name="body" rows="3" class="input" placeholder="いまどうしてる？（本文または画像を投稿できます）"></textarea>
-          </div>
-          <div class="d-flex gap-2 align-items-center">
-            <input id="post-image-input" type="file" name="image" accept="image/*" class="form-control form-control-sm" style="max-width:200px">
-            <button type="submit" class="btn">投稿</button>
-          </div>
-          <div id="post-image-preview" class="mt-2" style="display:none">
-            <p class="post-meta">画像プレビュー</p>
-            <img id="post-preview-img" src="#" class="img-fluid rounded" style="max-height:240px" />
-            <div><button type="button" id="post-remove-image" class="btn btn-sm secondary mt-2">画像を削除</button></div>
-          </div>
-        </div>
-      </div>
-    </form>
-  </div>
-  {% else %}
-    <p class="card p-3">ログインして投稿できます。</p>
-  {% endif %}
+  <!-- タブナビゲーション -->
+  <ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {% if not search_active %}active{% endif %}" id="feed-tab" data-bs-toggle="tab" data-bs-target="#feed-content" type="button" role="tab">フィード</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {% if search_active %}active{% endif %}" id="search-tab" data-bs-toggle="tab" data-bs-target="#search-content" type="button" role="tab">検索</button>
+    </li>
+  </ul>
 
-  <h2 class="mt-4">Posts</h2>
-  <div class="list">
-    {% for p in posts %}
-      <div class="card post-card mb-3">
-        <div class="d-flex align-items-start gap-3">
-          {% if p.author.avatar_filename %}
-                {% if g.user and g.user.id == p.author.id %}
-                  <form action="{{ url_for('main.settings') }}" method="post" enctype="multipart/form-data" class="d-inline">
-                    <input type="hidden" name="next" value="{{ request.path }}">
-                    <input type="file" name="avatar" id="avatar-input-{{ p.id }}" class="d-none" onchange="this.form.submit()">
-                    <label for="avatar-input-{{ p.id }}" style="cursor:pointer; display:inline-block;">
-                      <img src="{{ url_for('main.uploaded_file', filename=p.author.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:48px;height:48px;object-fit:cover">
-                    </label>
-                  </form>
-                {% else %}
-                  <img src="{{ url_for('main.uploaded_file', filename=p.author.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:48px;height:48px;object-fit:cover">
-                {% endif %}
-                {% else %}
-                <div class="logo" aria-hidden="true" style="width:48px;height:48px"></div>
-                {% endif %}
-          <div style="flex:1">
-            <div class="d-flex justify-content-between">
-              <div>
-                <div class="post-title"><a href="{{ url_for('main.user', username=p.author.username) }}" class="text-decoration-none text-dark">{{ p.author.display_name or p.author.username }}</a></div>
-                <div class="post-meta">{{ p.created_at }}</div>
+  <!-- タブコンテンツ -->
+  <div class="tab-content">
+    <!-- フィードタブ -->
+    <div class="tab-pane fade {% if not search_active %}show active{% endif %}" id="feed-content" role="tabpanel">
+      {% if g.user %}
+      <div class="card form-card mb-4">
+        <form action="{{ url_for('main.create_post') }}" method="post" enctype="multipart/form-data">
+          <div class="d-flex gap-3">
+            {% if g.user and g.user.avatar_filename %}
+              <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:48px;height:48px;object-fit:cover" alt="avatar">
+            {% else %}
+              <div class="logo" aria-hidden="true"></div>
+            {% endif %}
+            <div style="flex:1">
+              <div class="mb-2">
+                <textarea name="body" rows="3" class="input" placeholder="いまどうしてる？（本文または画像を投稿できます）"></textarea>
               </div>
-              <div>
-                {% if g.user and g.user.id == p.user_id %}
-                  <form action="{{ url_for('main.delete_post', post_id=p.id) }}" method="post" style="display:inline" onsubmit="return confirm('本当に削除しますか？');">
-                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                  </form>
+              <div class="d-flex gap-2 align-items-center">
+                <input id="post-image-input" type="file" name="image" accept="image/*" class="form-control form-control-sm" style="max-width:200px">
+                <button type="submit" class="btn">投稿</button>
+              </div>
+              <div id="post-image-preview" class="mt-2" style="display:none">
+                <p class="post-meta">画像プレビュー</p>
+                <img id="post-preview-img" src="#" class="img-fluid rounded" style="max-height:240px" />
+                <div><button type="button" id="post-remove-image" class="btn btn-sm secondary mt-2">画像を削除</button></div>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+      {% else %}
+        <p class="card p-3">ログインして投稿できます。</p>
+      {% endif %}
+
+      <h2 class="mt-4">投稿</h2>
+      <div class="list">
+        {% for p in posts %}
+          <div class="card post-card mb-3">
+            <div class="d-flex align-items-start gap-3">
+              {% if p.author.avatar_filename %}
+                    {% if g.user and g.user.id == p.author.id %}
+                      <form action="{{ url_for('main.settings') }}" method="post" enctype="multipart/form-data" class="d-inline">
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <input type="file" name="avatar" id="avatar-input-{{ p.id }}" class="d-none" onchange="this.form.submit()">
+                        <label for="avatar-input-{{ p.id }}" style="cursor:pointer; display:inline-block;">
+                          <img src="{{ url_for('main.uploaded_file', filename=p.author.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:48px;height:48px;object-fit:cover">
+                        </label>
+                      </form>
+                    {% else %}
+                      <img src="{{ url_for('main.uploaded_file', filename=p.author.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:48px;height:48px;object-fit:cover">
+                    {% endif %}
+                    {% else %}
+                    <div class="logo" aria-hidden="true" style="width:48px;height:48px"></div>
+                    {% endif %}
+              <div style="flex:1">
+                <div class="d-flex justify-content-between">
+                  <div>
+                    <div class="post-title"><a href="{{ url_for('main.user', username=p.author.username) }}" class="text-decoration-none text-dark">{{ p.author.display_name or p.author.username }}</a></div>
+                    <div class="post-meta">{{ p.created_at }}</div>
+                  </div>
+                  <div>
+                    {% if g.user and g.user.id == p.user_id %}
+                      <form action="{{ url_for('main.delete_post', post_id=p.id) }}" method="post" style="display:inline" onsubmit="return confirm('本当に削除しますか？');">
+                        <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="mt-2">{{ p.body }}</div>
+                {% if p.image_filename %}
+                  <div class="mt-3">
+                    <a href="{{ url_for('main.uploaded_file', filename=p.image_filename) }}">
+                      <img src="{{ url_for('main.uploaded_file', filename=p.image_filename) }}" alt="{{ p.image_caption }}" class="img-fluid rounded">
+                    </a>
+                    {% if p.image_caption %}
+                      <div class="mt-2 text-muted">{{ p.image_caption }}</div>
+                    {% endif %}
+                  </div>
                 {% endif %}
               </div>
             </div>
-            <div class="mt-2">{{ p.body }}</div>
-            {% if p.image_filename %}
-              <div class="mt-3">
-                <a href="{{ url_for('main.uploaded_file', filename=p.image_filename) }}">
-                  <img src="{{ url_for('main.uploaded_file', filename=p.image_filename) }}" alt="{{ p.image_caption }}" class="img-fluid rounded">
-                </a>
-                {% if p.image_caption %}
-                  <div class="mt-2 text-muted">{{ p.image_caption }}</div>
+          </div>
+        {% else %}
+          <div class="card p-3">投稿がありません。</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 検索タブ -->
+    <div class="tab-pane fade {% if search_active %}show active{% endif %}" id="search-content" role="tabpanel">
+      <div class="card form-card mb-4">
+        <h5 class="mb-3">投稿検索</h5>
+        <form action="{{ url_for('main.search_posts') }}" method="get">
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">投稿者ユーザー名</label>
+                <input type="text" name="username" class="input" placeholder="ユーザー名（部分一致）" value="{{ search_params.get('username', '') if search_active else '' }}">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">投稿本文</label>
+                <input type="text" name="body" class="input" placeholder="キーワード（部分一致）" value="{{ search_params.get('body', '') if search_active else '' }}">
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">開始日</label>
+                <input type="date" name="date_from" class="input" value="{{ search_params.get('date_from', '') if search_active else '' }}">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">終了日</label>
+                <input type="date" name="date_to" class="input" value="{{ search_params.get('date_to', '') if search_active else '' }}">
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn">検索</button>
+            <a href="{{ url_for('main.index') }}" class="btn secondary">リセット</a>
+          </div>
+        </form>
+      </div>
+
+      <h2 class="mt-4">検索結果</h2>
+      {% if search_active %}
+        <div class="alert alert-info">
+          検索条件: 
+          {% if search_params.get('username') %}ユーザー名「{{ search_params.get('username') }}」{% endif %}
+          {% if search_params.get('body') %}本文「{{ search_params.get('body') }}」{% endif %}
+          {% if search_params.get('date_from') %}開始日「{{ search_params.get('date_from') }}」{% endif %}
+          {% if search_params.get('date_to') %}終了日「{{ search_params.get('date_to') }}」{% endif %}
+        </div>
+      {% endif %}
+      <div class="list">
+        {% for p in posts %}
+          <div class="card post-card mb-3">
+            <div class="d-flex align-items-start gap-3">
+              {% if p.author.avatar_filename %}
+                    {% if g.user and g.user.id == p.author.id %}
+                      <form action="{{ url_for('main.settings') }}" method="post" enctype="multipart/form-data" class="d-inline">
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <input type="file" name="avatar" id="avatar-input-{{ p.id }}" class="d-none" onchange="this.form.submit()">
+                        <label for="avatar-input-{{ p.id }}" style="cursor:pointer; display:inline-block;">
+                          <img src="{{ url_for('main.uploaded_file', filename=p.author.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:48px;height:48px;object-fit:cover">
+                        </label>
+                      </form>
+                    {% else %}
+                      <img src="{{ url_for('main.uploaded_file', filename=p.author.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:48px;height:48px;object-fit:cover">
+                    {% endif %}
+                    {% else %}
+                    <div class="logo" aria-hidden="true" style="width:48px;height:48px"></div>
+                    {% endif %}
+              <div style="flex:1">
+                <div class="d-flex justify-content-between">
+                  <div>
+                    <div class="post-title"><a href="{{ url_for('main.user', username=p.author.username) }}" class="text-decoration-none text-dark">{{ p.author.display_name or p.author.username }}</a></div>
+                    <div class="post-meta">{{ p.created_at }}</div>
+                  </div>
+                  <div>
+                    {% if g.user and g.user.id == p.user_id %}
+                      <form action="{{ url_for('main.delete_post', post_id=p.id) }}" method="post" style="display:inline" onsubmit="return confirm('本当に削除しますか？');">
+                        <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="mt-2">{{ p.body }}</div>
+                {% if p.image_filename %}
+                  <div class="mt-3">
+                    <a href="{{ url_for('main.uploaded_file', filename=p.image_filename) }}">
+                      <img src="{{ url_for('main.uploaded_file', filename=p.image_filename) }}" alt="{{ p.image_caption }}" class="img-fluid rounded">
+                    </a>
+                    {% if p.image_caption %}
+                      <div class="mt-2 text-muted">{{ p.image_caption }}</div>
+                    {% endif %}
+                  </div>
                 {% endif %}
               </div>
-            {% endif %}
+            </div>
           </div>
-        </div>
+        {% else %}
+          <div class="card p-3">検索結果がありません。</div>
+        {% endfor %}
       </div>
-    {% else %}
-      <div class="card p-3">No posts yet.</div>
-    {% endfor %}
-  </div> 
-
+    </div>
+  </div>
 
 {% endblock %}

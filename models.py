@@ -42,6 +42,9 @@ class Message(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     recipient_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    # Read status tracking
+    is_read = db.Column(db.Boolean, default=False, nullable=False)
+    read_at = db.Column(db.DateTime, nullable=True)
 
 
 

@@ -70,24 +70,77 @@ def allowed_file(filename):
 def load_logged_in_user():
     user_id = session.get('user_id')
     g.user = User.query.get(user_id) if user_id else None
+    # Calculate unread message count for logged-in users
+    if g.user:
+        g.unread_count = Message.query.filter_by(recipient_id=g.user.id, is_read=False).count()
+    else:
+        g.unread_count = 0
 
 
 @bp.route('/')
 def index():
     posts = Post.query.order_by(Post.created_at.desc()).all()
-    return render_template('index.html', posts=posts)
+    return render_template('index.html', posts=posts, search_active=False)
+
+
+@bp.route('/search', methods=['GET', 'POST'])
+def search_posts():
+    query = Post.query
+    search_params = {
+        'username': request.args.get('username', '').strip(),
+        'body': request.args.get('body', '').strip(),
+        'date_from': request.args.get('date_from', ''),
+        'date_to': request.args.get('date_to', '')
+    }
+    
+    # ユーザー名で検索
+    if search_params['username']:
+        user = User.query.filter(User.username.ilike(f"%{search_params['username']}%")).all()
+        user_ids = [u.id for u in user]
+        if user_ids:
+            query = query.filter(Post.user_id.in_(user_ids))
+        else:
+            query = query.filter(Post.user_id == -1)  # 結果なし
+    
+    # 投稿本文で検索
+    if search_params['body']:
+        query = query.filter(Post.body.ilike(f"%{search_params['body']}%"))
+    
+    # 開始日時で検索
+    if search_params['date_from']:
+        try:
+            from datetime import datetime
+            date_from = datetime.strptime(search_params['date_from'], '%Y-%m-%d')
+            query = query.filter(Post.created_at >= date_from)
+        except (ValueError, TypeError):
+            pass
+    
+    # 終了日時で検索
+    if search_params['date_to']:
+        try:
+            from datetime import datetime
+            date_to = datetime.strptime(search_params['date_to'], '%Y-%m-%d')
+            # 翌日の開始までを含める
+            from datetime import timedelta
+            date_to = date_to + timedelta(days=1)
+            query = query.filter(Post.created_at < date_to)
+        except (ValueError, TypeError):
+            pass
+    
+    posts = query.order_by(Post.created_at.desc()).all()
+    return render_template('index.html', posts=posts, search_active=True, search_params=search_params)
 
 # Posts
 @bp.route('/post', methods=['POST'])
 def create_post():
     if not g.user:
-        flash('Login required')
+        flash('ログインが必要です')
         return redirect(url_for('main.login'))
     body = request.form.get('body')
     file = request.files.get('image')
     has_valid_image = bool(file and file.filename != '' and allowed_file(file.filename))
     if not body and not has_valid_image:
-        flash('Body or image required')
+        flash('本文または画像が必要です')
         return redirect(url_for('main.index'))
 
     # create post instance
@@ -104,12 +157,12 @@ def create_post():
             p.image_caption = request.form.get('image_caption')
             # ensure body is at least empty string (already handled)
         else:
-            flash('Invalid file')
+            flash('無効なファイルです')
             return redirect(url_for('main.index'))
 
     db.session.add(p)
     db.session.commit()
-    flash('Posted.')
+    flash('投稿しました')
     return redirect(url_for('main.index'))
 
 
@@ -122,7 +175,7 @@ def view_post(post_id):
 @bp.route('/post/<int:post_id>/edit', methods=['GET', 'POST'])
 def edit_post(post_id):
     # Editing posts is not supported in this app by design
-    flash('Editing posts is not supported.')
+    flash('投稿の編集はサポートされていません')
     return redirect(url_for('main.view_post', post_id=post_id))
 
 
@@ -131,7 +184,7 @@ def delete_post(post_id):
     from urllib.parse import urlparse
     p = Post.query.get_or_404(post_id)
     if not g.user or g.user.id != p.user_id:
-        flash('Permission denied')
+        flash('権限がありません')
         return redirect(url_for('main.index'))
     # remove attached image file
     if p.image_filename:
@@ -141,7 +194,7 @@ def delete_post(post_id):
             pass
     db.session.delete(p)
     db.session.commit()
-    flash('Deleted.')
+    flash('削除しました')
     # redirect back to caller when possible
     next_url = request.form.get('next')
     if next_url:
@@ -165,10 +218,10 @@ def register():
         display_name = request.form.get('display_name')
         avatar = request.files.get('avatar')
         if not username or not password:
-            flash('Username and password required')
+            flash('ユーザー名とパスワードが必要です')
             return redirect(url_for('main.register'))
         if User.query.filter_by(username=username).first():
-            flash('Username already exists')
+            flash('ユーザー名は既に存在します')
             return redirect(url_for('main.register'))
         u = User(username=username)
         u.set_password(password)
@@ -185,7 +238,7 @@ def register():
         # ensure there is no stale profile bio data for this username
         remove_profile(u.username)
         session['user_id'] = u.id
-        flash('Registered and logged in.')
+        flash('登録してログインしました')
         return redirect(url_for('main.index'))
     return render_template('register.html')
 
@@ -197,10 +250,10 @@ def login():
         password = request.form.get('password')
         u = User.query.filter_by(username=username).first()
         if not u or not u.check_password(password):
-            flash('Invalid username or password')
+            flash('ユーザー名またはパスワードが無効です')
             return redirect(url_for('main.login'))
         session['user_id'] = u.id
-        flash('Logged in.')
+        flash('ログインしました')
         return redirect(url_for('main.index'))
     return render_template('login.html')
 
@@ -208,7 +261,7 @@ def login():
 @bp.route('/logout')
 def logout():
     session.pop('user_id', None)
-    flash('Logged out.')
+    flash('ログアウトしました')
     return redirect(url_for('main.index'))
 
 
@@ -246,7 +299,7 @@ def settings():
             avatar.save(save_path)
             g.user.avatar_filename = unique
         db.session.commit()
-        flash('Settings updated.')
+        flash('設定を更新しました')
         # redirect back to caller when possible (modal or next param)
         next_url = request.form.get('next')
         if next_url:
@@ -268,7 +321,7 @@ def settings():
 def user(username):
     u = User.query.filter_by(username=username).first()
     if not u:
-        flash('User not found')
+        flash('ユーザーが見つかりません')
         return redirect(url_for('main.index'))
     posts = Post.query.filter_by(user_id=u.id).order_by(Post.created_at.desc()).all()
     bio = get_profile_bio(u.username)
@@ -278,28 +331,35 @@ def user(username):
 @bp.route('/messages/<username>', methods=['GET', 'POST'])
 def messages_with(username):
     if not g.user:
-        flash('Login required')
+        flash('ログインが必要です')
         return redirect(url_for('main.login'))
     other = User.query.filter_by(username=username).first_or_404()
     if request.method == 'POST':
         body = request.form.get('body')
         if not body:
-            flash('Body required')
+            flash('メッセージ本文が必要です')
             return redirect(url_for('main.messages_with', username=username))
         # prevent messaging yourself
         if other.id == g.user.id:
-            flash('Cannot send message to yourself')
+            flash('自分自身にメッセージを送信することはできません')
             return redirect(url_for('main.messages'))
         m = Message(body=body, sender_id=g.user.id, recipient_id=other.id)
         db.session.add(m)
         db.session.commit()
-        flash('Message sent.')
+        flash('メッセージを送信しました')
         return redirect(url_for('main.messages_with', username=username))
     # conversation between g.user and other
     conv = Message.query.filter(
         ((Message.sender_id == g.user.id) & (Message.recipient_id == other.id)) |
         ((Message.sender_id == other.id) & (Message.recipient_id == g.user.id))
     ).order_by(Message.created_at.asc()).all()
+    # mark received messages as read
+    from datetime import datetime
+    for msg in conv:
+        if msg.recipient_id == g.user.id and not msg.is_read:
+            msg.is_read = True
+            msg.read_at = datetime.utcnow()
+    db.session.commit()
     return render_template('messages_thread.html', other=other, messages=conv)
 
 
@@ -307,27 +367,27 @@ def messages_with(username):
 @bp.route('/messages', methods=['GET', 'POST'])
 def messages():
     if not g.user:
-        flash('Login required')
+        flash('ログインが必要です')
         return redirect(url_for('main.login'))
     if request.method == 'POST':
         body = request.form.get('body')
         recipient = request.form.get('recipient')
         if not body:
-            flash('Body required')
+            flash('メッセージ本文が必要です')
             return redirect(url_for('main.messages'))
         recipient_user = None
         if recipient:
             recipient_user = User.query.filter_by(username=recipient).first()
             if not recipient_user:
-                flash('Recipient not found')
+                flash('送信先ユーザーが見つかりません')
                 return redirect(url_for('main.messages'))
             if recipient_user.id == g.user.id:
-                flash('Cannot send message to yourself')
+                flash('自分自身にメッセージを送信することはできません')
                 return redirect(url_for('main.messages'))
         m = Message(body=body, sender_id=g.user.id, recipient_id=(recipient_user.id if recipient_user else None))
         db.session.add(m)
         db.session.commit()
-        flash('Message sent.')
+        flash('メッセージを送信しました')
         # if a recipient username was provided and found, show the thread
         if recipient and recipient_user:
             return redirect(url_for('main.messages', username=recipient_user.username))
@@ -347,10 +407,12 @@ def messages():
     partner_objs = []
     for k, last_msg in partners.items():
         if k is None:
-            partner_objs.append({'user': None, 'last': last_msg})
+            partner_objs.append({'user': None, 'last': last_msg, 'unread_count': 0})
         else:
             u = User.query.get(k)
-            partner_objs.append({'user': u, 'last': last_msg})
+            # Count unread messages from this specific user
+            unread_count = Message.query.filter_by(sender_id=k, recipient_id=g.user.id, is_read=False).count()
+            partner_objs.append({'user': u, 'last': last_msg, 'unread_count': unread_count})
 
     # if username param is present, load the thread for that user to show on the right column
     username = request.args.get('username')
@@ -363,6 +425,13 @@ def messages():
                 ((Message.sender_id == g.user.id) & (Message.recipient_id == other.id)) |
                 ((Message.sender_id == other.id) & (Message.recipient_id == g.user.id))
             ).order_by(Message.created_at.asc()).all()
+            # mark received messages as read
+            from datetime import datetime
+            for msg in thread:
+                if msg.recipient_id == g.user.id and not msg.is_read:
+                    msg.is_read = True
+                    msg.read_at = datetime.utcnow()
+            db.session.commit()
 
     return render_template('messages.html', partners=partner_objs, other=other, messages_thread=thread)
 
@@ -372,11 +441,11 @@ def delete_message(msg_id):
     from urllib.parse import urlparse
     m = Message.query.get_or_404(msg_id)
     if not g.user or g.user.id != m.sender_id:
-        flash('Permission denied')
+        flash('権限がありません')
         return redirect(url_for('main.messages'))
     db.session.delete(m)
     db.session.commit()
-    flash('Message deleted')
+    flash('メッセージを削除しました')
     # Prefer an explicit next param, otherwise fall back to referrer if internal, else messages
     next_url = request.form.get('next')
     if next_url:
@@ -389,6 +458,59 @@ def delete_message(msg_id):
             path = parsed.path or url_for('main.messages')
             return redirect(path)
     return redirect(url_for('main.messages'))
+
+
+@bp.route('/api/messages/<username>')
+def api_get_messages(username):
+    """API endpoint to fetch messages with a specific user (for real-time updates)"""
+    from flask import jsonify
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    other = User.query.filter_by(username=username).first()
+    if not other:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Get all messages between current user and the other user
+    conv = Message.query.filter(
+        ((Message.sender_id == g.user.id) & (Message.recipient_id == other.id)) |
+        ((Message.sender_id == other.id) & (Message.recipient_id == g.user.id))
+    ).order_by(Message.created_at.asc()).all()
+    
+    # Mark received messages as read
+    from datetime import datetime
+    for msg in conv:
+        if msg.recipient_id == g.user.id and not msg.is_read:
+            msg.is_read = True
+            msg.read_at = datetime.utcnow()
+    db.session.commit()
+    
+    # Convert messages to JSON format
+    messages_data = []
+    for m in conv:
+        messages_data.append({
+            'id': m.id,
+            'body': m.body,
+            'sender_id': m.sender_id,
+            'recipient_id': m.recipient_id,
+            'created_at': m.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'is_read': m.is_read,
+            'sender_avatar': m.sender.avatar_filename if m.sender else None,
+            'sender_display_name': m.sender.display_name or m.sender.username if m.sender else None
+        })
+    
+    return jsonify({'messages': messages_data})
+
+
+@bp.route('/api/unread-count')
+def api_unread_count():
+    """API endpoint to fetch unread message count"""
+    from flask import jsonify
+    if not g.user:
+        return jsonify({'unread_count': 0}), 401
+    
+    unread_count = Message.query.filter_by(recipient_id=g.user.id, is_read=False).count()
+    return jsonify({'unread_count': unread_count})
 
 
 @bp.route('/uploads/<path:filename>')

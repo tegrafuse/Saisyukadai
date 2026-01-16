@@ -2,15 +2,15 @@
 
 {% block content %}
   <div class="card form-card mx-auto">
-    <h2 class="h5">Login</h2>
+    <h2 class="h5">ログイン</h2>
     <form action="{{ url_for('main.login') }}" method="post">
       <div class="mb-2">
-        <input name="username" class="input" placeholder="Username">
+        <input name="username" class="input" placeholder="ユーザー名">
       </div>
       <div class="mb-2">
-        <input name="password" type="password" class="input" placeholder="Password">
+        <input name="password" type="password" class="input" placeholder="パスワード">
       </div>
-      <button type="submit" class="btn">Login</button>
+      <button type="submit" class="btn">ログイン</button>
     </form>
   </div>
 {% endblock %}

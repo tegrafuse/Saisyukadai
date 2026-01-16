@@ -3,45 +3,53 @@
 {% block content %}
   <div class="row">
     <div class="col-md-4">
-      <h5>Conversations</h5>
+      <h5>会話</h5>
       <div class="list-group">
         <a href="{{ url_for('main.messages') }}" class="list-group-item list-group-item-action {% if not request.args.get('username') %}active{% endif %}">
-          <div class="fw-bold">New message</div>
-          <div class="text-muted small">Start a message to any user</div>
+          <div class="fw-bold">新規メッセージ</div>
+          <div class="text-muted small">ユーザーへメッセージを送信</div>
         </a>
         {% for p in partners %}
           {% if p.user %}
-            <a href="{{ url_for('main.messages', username=p.user.username) }}" class="list-group-item list-group-item-action d-flex align-items-center {% if request.args.get('username') == p.user.username %}active{% endif %}">
+            <a href="{{ url_for('main.messages', username=p.user.username) }}" class="list-group-item list-group-item-action d-flex align-items-center {% if request.args.get('username') == p.user.username %}active{% endif %}" data-partner-username="{{ p.user.username }}">
               {% if p.user.avatar_filename %}
                 <img src="{{ url_for('main.uploaded_file', filename=p.user.avatar_filename) }}" class="rounded-circle me-2" style="width:40px;height:40px;object-fit:cover">
               {% else %}
                 <div class="logo me-2" style="width:40px;height:40px;border-radius:50%"></div>
               {% endif %}
-              <div>
+              <div class="flex-grow-1">
                 <div class="fw-bold">{{ p.user.display_name or p.user.username }}</div>
                 <div class="text-muted small">{{ p.last.body[:60] }}</div>
               </div>
+              {% if p.unread_count > 0 %}
+                <span class="badge bg-danger rounded-pill partner-unread-badge" data-unread-count="{{ p.unread_count }}">{{ p.unread_count }}</span>
+              {% endif %}
             </a>
           {% else %}
-            <div class="list-group-item">Broadcasts</div>
+            <div class="list-group-item">ブロードキャスト</div>
           {% endif %}
         {% else %}
-          <div class="list-group-item">No conversations yet.</div>
+          <div class="list-group-item">会話がありません</div>
         {% endfor %}
       </div>
     </div>
     <div class="col-md-8">
-      <h5>Messages</h5>
+      <h5>メッセージ</h5>
       {% if other %}
         <div class="card p-3" style="min-height:500px">
-          <h5>Conversation with {{ other.display_name or other.username }}</h5>
-          <div class="chat mt-3">
+          <h5>{{ other.display_name or other.username }}さんとの会話</h5>
+          <div class="chat mt-3" style="max-height:500px;overflow-y:auto">
             {% for m in messages_thread %}
-              {% if m.sender_id == g.user.id %}
-                <div class="d-flex mb-2 justify-content-end">
+              <div class="d-flex mb-2" {% if m.sender_id == g.user.id %}style="justify-content:flex-end"{% endif %} data-message-id="{{ m.id }}">
+                {% if m.sender_id == g.user.id %}
                   <div class="me-2 text-end" style="max-width:70%">
                     <div class="bubble bubble-right">{{ m.body }}</div>
-                    <div class="text-muted small mt-1">{{ m.created_at }}</div>
+                    <div class="text-muted small mt-1">
+                      {{ m.created_at }}
+                      {% if m.recipient_id and m.is_read %}
+                        <span class="ms-1 text-info" title="Read at {{ m.read_at }}">✓✓</span>
+                      {% endif %}
+                    </div>
                   </div>
                   <div>
                     {% if g.user.avatar_filename %}
@@ -50,9 +58,7 @@
                       <div class="logo" style="width:36px;height:36px"></div>
                     {% endif %}
                   </div>
-                </div>
-              {% else %}
-                <div class="d-flex mb-2">
+                {% else %}
                   <div>
                     {% if other.avatar_filename %}
                       <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
@@ -64,8 +70,8 @@
                     <div class="bubble bubble-left">{{ m.body }}</div>
                     <div class="text-muted small mt-1">{{ m.created_at }}</div>
                   </div>
-                </div>
-              {% endif %}
+                {% endif %}
+              </div>
             {% else %}
               <div class="text-muted">No messages yet. Say hi!</div>
             {% endfor %}
@@ -83,18 +89,26 @@
         </div>
       {% else %}
         <div class="card p-3" style="min-height:400px">
-          <p class="text-muted">Select a conversation from the left or use the compose box below (recipient by username).</p>
+          <p class="text-muted">左から会話を選択するか、下のメッセージボックスで送信先ユーザー名を入力してください。</p>
           <form action="{{ url_for('main.messages') }}" method="post">
             <div class="mb-2">
-              <input name="recipient" class="input" placeholder="Recipient username (leave empty for broadcast)">
+              <input name="recipient" class="input" placeholder="送信先ユーザー名（空欄でブロードキャスト）">
             </div>
             <div class="mb-2">
-              <textarea name="body" rows="3" class="input" placeholder="Write a message..."></textarea>
+              <textarea name="body" rows="3" class="input" placeholder="メッセージを入力..."></textarea>
             </div>
-            <button type="submit" class="btn">Send</button>
+            <button type="submit" class="btn">送信</button>
           </form>
         </div>
       {% endif %}
     </div>
   </div>
+
+  {% if other %}
+  <script>
+    document.body.dataset.currentUserId = "{{ g.user.id }}";
+    document.body.dataset.otherUsername = "{{ other.username }}";
+  </script>
+  <script src="{{ url_for('static', filename='js/realtime_messages.js') }}"></script>
+  {% endif %}
 {% endblock %}

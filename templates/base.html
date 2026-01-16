@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ title or 'SNS Demo' }}</title>
+    <title>{{ title or 'SNSデモ' }}</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="" crossorigin="anonymous">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
@@ -13,7 +13,7 @@
       <nav class="navbar">
         <div class="header">
           <div class="logo"></div>
-          <a class="brand" href="{{ url_for('main.index') }}">SNS Demo</a>
+          <a class="brand" href="{{ url_for('main.index') }}">SNSデモ</a>
         </div>
         <div>
           {% if g.user %}
@@ -21,11 +21,24 @@
               <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:36px;height:36px;object-fit:cover; margin-right:8px">
             {% endif %}
             <a class="me-3 text-decoration-none text-dark" href="{{ url_for('main.user', username=g.user.username) }}">{{ g.user.display_name or g.user.username }}</a>
-            <a class="me-2" href="{{ url_for('main.messages') }}">Messages</a>
-            <a class="btn btn-sm" href="{{ url_for('main.logout') }}">Logout</a>
+            <a class="me-2 position-relative" href="{{ url_for('main.messages') }}">
+              メッセージ
+              {% if g.unread_count > 0 %}
+                <span id="unread-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:0.65rem">
+                  {{ g.unread_count }}
+                  <span class="visually-hidden">未読メッセージ</span>
+                </span>
+              {% else %}
+                <span id="unread-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:0.65rem; display:none">
+                  0
+                  <span class="visually-hidden">未読メッセージ</span>
+                </span>
+              {% endif %}
+            </a>
+            <a class="btn btn-sm" href="{{ url_for('main.logout') }}">ログアウト</a>
           {% else %}
-            <a class="me-2" href="{{ url_for('main.register') }}">Register</a>
-            <a class="btn btn-sm" href="{{ url_for('main.login') }}">Login</a>
+            <a class="me-2" href="{{ url_for('main.register') }}">登録</a>
+            <a class="btn btn-sm" href="{{ url_for('main.login') }}">ログイン</a>
           {% endif %} 
         </div>
       </nav>
@@ -44,11 +57,12 @@
     </main>
 
     <footer class="container">
-      <p class="footer">© {{ current_year or '' }} SNS Demo</p>
+      <p class="footer">© {{ current_year or '' }} SNSデモ</p>
     </footer>
 
     <!-- Bootstrap JS (Bundle includes Popper) -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='js/post_preview.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/unread_badge_updater.js') }}"></script>
   </body>
 </html>

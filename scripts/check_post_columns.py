@@ -1,1 +1,0 @@
-# Disabled per user request. This helper is removed.
