@@ -1,0 +1,54 @@
+{% macro community_sidebar(communities, followed_communities=[], official_communities=[]) %}
+<div style="width:280px;flex-shrink:0;overflow-y:auto">
+  <div class="card p-3" style="border:none;border-radius:0;height:100%">
+    <h5 class="mb-3">🏘️ コミュニティ</h5>
+    <div class="list-group mb-3">
+      <a class="list-group-item list-group-item-action" href="{{ url_for('main.index') }}">ホーム</a>
+    </div>
+
+    <!-- Followed Communities -->
+    {% if followed_communities %}
+      <h6 class="mb-2 text-muted" style="font-size:0.85rem">フォロー中</h6>
+      <div class="list-group mb-3">
+        {% for c in followed_communities %}
+          <div class="list-group-item">
+            <a href="{{ url_for('main.community_page', community_id=c.id) }}" class="text-decoration-none text-dark d-flex align-items-center gap-2">
+              {% if c.icon_filename %}
+                <img src="{{ url_for('main.uploaded_file', filename=c.icon_filename) }}" alt="{{ c.name }}" class="rounded" style="width:32px;height:32px;object-fit:cover;flex-shrink:0">
+              {% else %}
+                <div class="logo" aria-hidden="true" style="width:32px;height:32px;flex-shrink:0"></div>
+              {% endif %}
+              <span class="flex-grow-1">{{ c.name }}</span>
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <!-- Official Communities -->
+    {% if official_communities %}
+      <h6 class="mb-2 text-muted" style="font-size:0.85rem">オフィシャル</h6>
+      <div class="list-group mb-3">
+        {% for c in official_communities %}
+          <div class="list-group-item">
+            <a href="{{ url_for('main.community_page', community_id=c.id) }}" class="text-decoration-none text-dark d-flex align-items-center gap-2">
+              {% if c.icon_filename %}
+                <img src="{{ url_for('main.uploaded_file', filename=c.icon_filename) }}" alt="{{ c.name }}" class="rounded" style="width:32px;height:32px;object-fit:cover;flex-shrink:0">
+              {% else %}
+                <div class="logo" aria-hidden="true" style="width:32px;height:32px;flex-shrink:0"></div>
+              {% endif %}
+              <span class="flex-grow-1">{{ c.name }}</span>
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if g.user %}
+      <a href="{{ url_for('main.create_community') }}" class="btn btn-sm w-100">+ 新規作成</a>
+    {% else %}
+      <p class="text-muted small mb-0">ログインしてコミュニティを作成できます。</p>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}

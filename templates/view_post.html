@@ -1,21 +1,258 @@
 {% extends "base.html" %}
+{% import "_sidebar.html" as sidebar %}
+
+{% macro render_replies(nodes, depth=0) %}
+  {% for node in nodes %}
+    <div class="mb-3 reply-item" id="reply-{{ node.reply.id }}" style="margin-left: {{ depth * 16 }}px;">
+      <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="d-flex gap-2 align-items-start">
+            {% if node.reply.user.avatar_filename %}
+              <a href="{{ url_for('main.user', username=node.reply.user.username) }}" class="text-decoration-none">
+                <img src="{{ url_for('main.uploaded_file', filename=node.reply.user.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:32px;height:32px;object-fit:cover">
+              </a>
+            {% else %}
+              <a href="{{ url_for('main.user', username=node.reply.user.username) }}" class="text-decoration-none">
+                <div class="logo" aria-hidden="true" style="width:32px;height:32px"></div>
+              </a>
+            {% endif %}
+            <div>
+              <div class="fw-bold mb-1">{{ node.reply.user.display_name or node.reply.user.username }} <span class="text-muted" style="font-size:0.9em">@{{ node.reply.user.username }}</span></div>
+              <div class="text-muted" style="font-size:0.85em">{{ node.reply.created_at|time_ago }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-2">{{ node.reply.body }}</div>
+        {% if node.reply.images %}
+          {% set first_img = (node.reply.images | sort(attribute='order'))[0] %}
+          {% set img_count = node.reply.images | length %}
+          <div class="mt-3 position-relative d-inline-block">
+            <img src="{{ url_for('main.uploaded_file', filename=first_img.filename) }}" alt="reply image" class="rounded post-image-thumbnail" style="max-width:100%;max-height:320px;object-fit:contain;cursor:pointer;display:block" data-reply-id="{{ node.reply.id }}" data-image-filename="{{ first_img.filename }}" data-image-order="{{ first_img.order }}">
+            {% if img_count > 1 %}
+              <span class="badge bg-dark position-absolute bottom-0 end-0 m-2" style="font-size:0.9rem">+{{ img_count - 1 }}枚</span>
+            {% endif %}
+          </div>
+        {% endif %}
+        {% if node.reply.video_filename %}
+          <div class="mt-2">
+            <video controls style="max-width:100%;max-height:320px;border-radius:8px">
+              <source src="{{ url_for('main.uploaded_file', filename=node.reply.video_filename) }}">
+            </video>
+          </div>
+        {% endif %}
+        <div class="mt-2 d-flex gap-3 align-items-center">
+          {% if g.user %}
+            {% set is_liked = node.reply.id in g.liked_reply_ids %}
+            {% set like_count = node.reply.likes|length if node.reply.likes else 0 %}
+            <a href="#" class="like-btn d-inline-flex align-items-center gap-1 {% if is_liked %}text-danger{% else %}text-muted{% endif %}"
+               data-reply-id="{{ node.reply.id }}"
+               data-liked="{{ 'true' if is_liked else 'false' }}"
+               style="text-decoration:none;cursor:pointer;">
+              <span>{{ '❤️' if is_liked else '🤍' }}</span>
+              <span>いいね</span>
+              {% if like_count > 0 %}<span class="like-count">{{ like_count }}</span>{% endif %}
+            </a>
+            <a href="#" class="d-inline-flex align-items-center gap-1 text-muted reply-modal-trigger"
+               data-parent-id="{{ node.reply.id }}"
+               data-parent-author="{{ node.reply.user.display_name or node.reply.user.username }}"
+               data-parent-body="{{ node.reply.body }}"
+               style="text-decoration:none;cursor:pointer;">
+              <span>💬</span><span>返信</span>
+            </a>
+          {% endif %}
+        </div>
+      </div>
+      {% if node.children %}
+        {{ render_replies(node.children, depth + 1) }}
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endmacro %}
 
 {% block content %}
-  <div class="card p-4">
-    <div class="d-flex justify-content-between align-items-start">
-      <h2 class="h5">{{ post.author.username }}</h2>
-      <small class="text-muted">{{ post.created_at }}</small>
-    </div>
-    <div class="mt-3">{{ post.body }}</div>
-    {% if post.image_filename %}
-      <div class="mt-3">
-        <a href="{{ url_for('main.uploaded_file', filename=post.image_filename) }}">
-          <img src="{{ url_for('main.uploaded_file', filename=post.image_filename) }}" class="img-fluid rounded" />
-        </a>
+  <div style="display:flex;height:calc(100vh - 70px)">
+    {{ sidebar.community_sidebar(communities, followed_communities, official_communities) }}
+    <div style="flex:1;overflow-y:auto;padding:20px">
+      <div style="max-width:1200px;margin:0 auto">
+        <div class="mb-3">
+          <a href="{{ request.referrer or url_for('main.index') }}" class="btn btn-sm btn-outline-secondary">← 戻る</a>
+        </div>
+        <div class="card p-4 mb-4">
+          <div class="d-flex justify-content-between align-items-start">
+            <div class="d-flex align-items-start gap-3">
+              {% if post.author.avatar_filename %}
+                <a href="{{ url_for('main.user', username=post.author.username) }}" class="text-decoration-none">
+                  <img src="{{ url_for('main.uploaded_file', filename=post.author.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:48px;height:48px;object-fit:cover">
+                </a>
+              {% else %}
+                <a href="{{ url_for('main.user', username=post.author.username) }}" class="text-decoration-none">
+                  <div class="logo" aria-hidden="true" style="width:48px;height:48px"></div>
+                </a>
+              {% endif %}
+              <div>
+                <div class="d-flex align-items-center gap-1 mb-1">
+                  {% if post.community and post.community.icon_filename %}
+                    <img src="{{ url_for('main.uploaded_file', filename=post.community.icon_filename) }}" alt="icon" style="width:18px;height:18px;object-fit:cover;border-radius:4px;">
+                  {% endif %}
+                  <span class="fw-semibold">{{ post.community.name if post.community else '未所属' }}</span>
+                </div>
+                <h2 class="h5 mb-1">{{ post.author.display_name or post.author.username }} <span class="text-muted" style="font-size:0.9em">@{{ post.author.username }}</span></h2>
+                <div class="text-muted small">{{ post.created_at|time_ago }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">{{ post.body }}</div>
+          {% if post.images %}
+            {% set first_img = (post.images | sort(attribute='order'))[0] %}
+            {% set img_count = post.images | length %}
+            <div class="mt-3 position-relative d-inline-block">
+              <img src="{{ url_for('main.uploaded_file', filename=first_img.filename) }}" alt="post image" class="rounded post-image-thumbnail" style="max-width:100%;max-height:500px;object-fit:contain;cursor:pointer;display:block" data-post-id="{{ post.id }}" data-image-filename="{{ first_img.filename }}" data-image-order="{{ first_img.order }}">
+              {% if img_count > 1 %}
+                <span class="badge bg-dark position-absolute bottom-0 end-0 m-2" style="font-size:0.9rem">+{{ img_count - 1 }}枚</span>
+              {% endif %}
+            </div>
+          {% endif %}
+          {% if post.video_filename %}
+            <div class="mt-3">
+              <video controls style="width:100%;max-height:400px;border-radius:8px">
+                <source src="{{ url_for('main.uploaded_file', filename=post.video_filename) }}">
+                お使いのブラウザは動画再生に対応していません。
+              </video>
+            </div>
+          {% endif %}
+          <div class="mt-3 d-flex gap-2 align-items-center">
+            {% if g.user %}
+              {% set is_liked = post.id in g.liked_post_ids %}
+              {% set like_count = post.likes|length if post.likes else 0 %}
+              <a href="#" class="like-btn d-inline-flex align-items-center gap-1 {% if is_liked %}text-danger{% else %}text-muted{% endif %}"
+                 data-post-id="{{ post.id }}"
+                 data-liked="{{ 'true' if is_liked else 'false' }}"
+                 style="text-decoration:none;cursor:pointer;">
+                <span>{{ '❤️' if is_liked else '🤍' }}</span>
+                <span>いいね</span>
+                {% if like_count > 0 %}<span class="like-count">{{ like_count }}</span>{% endif %}
+              </a>
+              <a href="#" class="d-inline-flex align-items-center gap-1 text-muted reply-modal-trigger"
+                 data-parent-id=""
+                 data-parent-author="{{ post.author.display_name or post.author.username }}"
+                 data-parent-body="{{ post.body }}"
+                 style="text-decoration:none;cursor:pointer;">
+                <span>💬</span><span>返信</span>
+              </a>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="card p-4">
+          <h3 class="h6 mb-3">スレッドの返信</h3>
+          {% if reply_tree %}
+            {{ render_replies(reply_tree) }}
+          {% else %}
+            <p class="text-muted mb-0">まだ返信はありません。</p>
+          {% endif %}
+        </div>
       </div>
-    {% endif %}
-    <div class="mt-3">
-      <a href="{{ url_for('main.index') }}" class="btn secondary">戻る</a>
     </div>
   </div>
-{% endblock %} 
+
+  <!-- Image Carousel Modal -->
+  <div class="modal fade" id="imageCarouselModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header border-0">
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center p-0">
+          <img id="carouselMainImage" src="" alt="image" style="width:100%;max-height:70vh;object-fit:contain">
+        </div>
+        <div class="modal-footer border-0 justify-content-center">
+          <button type="button" id="prevImageBtn" class="btn btn-outline-secondary">← 前へ</button>
+          <span id="imageCounter" class="text-muted mx-2">1 / 1</span>
+          <button type="button" id="nextImageBtn" class="btn btn-outline-secondary">次へ →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reply Modal -->
+  <div class="modal fade" id="replyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <form action="{{ url_for('main.reply_post', post_id=post.id) }}" method="post" enctype="multipart/form-data">
+          <div class="modal-header">
+            <h5 class="modal-title">返信する</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" name="parent_reply_id" id="modal-parent-reply-id" value="">
+            <div id="modal-parent-preview" class="mb-3 p-3 bg-light rounded" style="display:none">
+              <div class="fw-bold mb-1">返信先</div>
+              <div class="text-muted mb-1" id="modal-parent-author"></div>
+              <div class="text-muted" id="modal-parent-body" style="white-space:pre-wrap"></div>
+            </div>
+            <div class="mb-3">
+              <textarea name="body" rows="3" class="input" placeholder="返信内容（画像最大4枚、または動画1つまで）"></textarea>
+            </div>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+              <input type="file" name="files" accept="image/*,video/*" multiple class="form-control form-control-sm" style="max-width:250px">
+              <small class="text-muted">画像と動画は同時に添付できません</small>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-primary">送信</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      const modalEl = document.getElementById('replyModal');
+      if(!modalEl) return;
+      const bsModal = new bootstrap.Modal(modalEl);
+      const parentInput = document.getElementById('modal-parent-reply-id');
+      const parentPreview = document.getElementById('modal-parent-preview');
+      const parentAuthor = document.getElementById('modal-parent-author');
+      const parentBody = document.getElementById('modal-parent-body');
+
+      document.querySelectorAll('.reply-modal-trigger').forEach(btn => {
+        btn.addEventListener('click', function(e){
+          e.preventDefault();
+          const pid = this.dataset.parentId || '';
+          const author = this.dataset.parentAuthor || '';
+          const body = this.dataset.parentBody || '';
+
+          parentInput.value = pid;
+          if(pid){
+            parentPreview.style.display = 'block';
+            parentAuthor.textContent = author;
+            parentBody.textContent = body;
+          } else {
+            parentPreview.style.display = 'none';
+            parentAuthor.textContent = '';
+            parentBody.textContent = '';
+          }
+
+          bsModal.show();
+        });
+      });
+
+      // Auto-open reply modal when arriving from a "返信" link
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('open_reply') === '1') {
+          // Reply to the thread (no specific parent reply)
+          parentInput.value = '';
+          parentPreview.style.display = 'none';
+          parentAuthor.textContent = '';
+          parentBody.textContent = '';
+          bsModal.show();
+        }
+      } catch (e) {
+        console.debug('auto-open reply modal error:', e);
+      }
+    });
+  </script>
+{% endblock %}

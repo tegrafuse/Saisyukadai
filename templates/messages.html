@@ -1,10 +1,14 @@
 {% extends "base.html" %}
+{% import "_sidebar.html" as sidebar %}
 
 {% block content %}
-  <div class="row">
-    <div class="col-md-4">
-      <h5>会話</h5>
-      <div class="list-group">
+  <div style="display:flex;height:calc(100vh - 70px)">
+    {{ sidebar.community_sidebar(communities, followed_communities, official_communities) }}
+    <div style="flex:1;overflow-y:auto;padding:20px">
+      <div style="max-width:1200px;margin:0 auto;display:flex;gap:20px;height:100%">
+        <div style="width:280px;flex-shrink:0">
+          <h5>会話</h5>
+          <div class="list-group">
         <a href="{{ url_for('main.messages') }}" class="list-group-item list-group-item-action {% if not request.args.get('username') %}active{% endif %}">
           <div class="fw-bold">新規メッセージ</div>
           <div class="text-muted small">ユーザーへメッセージを送信</div>
@@ -31,9 +35,9 @@
         {% else %}
           <div class="list-group-item">会話がありません</div>
         {% endfor %}
-      </div>
-    </div>
-    <div class="col-md-8">
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto">
       <h5>メッセージ</h5>
       {% if other %}
         <div class="card p-3" style="min-height:500px">
@@ -47,23 +51,31 @@
                     <div class="text-muted small mt-1">
                       {{ m.created_at }}
                       {% if m.recipient_id and m.is_read %}
-                        <span class="ms-1 text-info" title="Read at {{ m.read_at }}">✓✓</span>
+                        <span class="ms-1 text-muted" style="font-size:0.85em">✓ 既読</span>
                       {% endif %}
                     </div>
                   </div>
                   <div>
                     {% if g.user.avatar_filename %}
-                      <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                      <a href="{{ url_for('main.user', username=g.user.username) }}" class="text-decoration-none">
+                        <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                      </a>
                     {% else %}
-                      <div class="logo" style="width:36px;height:36px"></div>
+                      <a href="{{ url_for('main.user', username=g.user.username) }}" class="text-decoration-none">
+                        <div class="logo" style="width:36px;height:36px"></div>
+                      </a>
                     {% endif %}
                   </div>
                 {% else %}
                   <div>
                     {% if other.avatar_filename %}
-                      <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                      <a href="{{ url_for('main.user', username=other.username) }}" class="text-decoration-none">
+                        <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                      </a>
                     {% else %}
-                      <div class="logo" style="width:36px;height:36px"></div>
+                      <a href="{{ url_for('main.user', username=other.username) }}" class="text-decoration-none">
+                        <div class="logo" style="width:36px;height:36px"></div>
+                      </a>
                     {% endif %}
                   </div>
                   <div class="ms-2" style="max-width:70%">
@@ -101,6 +113,8 @@
           </form>
         </div>
       {% endif %}
+        </div>
+      </div>
     </div>
   </div>
 

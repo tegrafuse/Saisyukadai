@@ -12,23 +12,31 @@
               <div class="text-muted small mt-1">
                 {{ m.created_at }}
                 {% if m.recipient_id and m.is_read %}
-                  <span class="ms-1 text-info" title="Read at {{ m.read_at }}">✓✓</span>
+                  <span class="ms-1 text-muted" style="font-size:0.85em">✓ 既読</span>
                 {% endif %}
               </div>
             </div>
             <div>
               {% if g.user.avatar_filename %}
-                <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                <a href="{{ url_for('main.user', username=g.user.username) }}" class="text-decoration-none">
+                  <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                </a>
               {% else %}
-                <div class="logo" style="width:36px;height:36px"></div>
+                <a href="{{ url_for('main.user', username=g.user.username) }}" class="text-decoration-none">
+                  <div class="logo" style="width:36px;height:36px"></div>
+                </a>
               {% endif %}
             </div>
           {% else %}
             <div>
               {% if other.avatar_filename %}
-                <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                <a href="{{ url_for('main.user', username=other.username) }}" class="text-decoration-none">
+                  <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                </a>
               {% else %}
-                <div class="logo" style="width:36px;height:36px"></div>
+                <a href="{{ url_for('main.user', username=other.username) }}" class="text-decoration-none">
+                  <div class="logo" style="width:36px;height:36px"></div>
+                </a>
               {% endif %}
             </div>
             <div class="ms-2" style="max-width:70%">

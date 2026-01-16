@@ -20,6 +20,39 @@ def create_app(config_object=None):
 
     db.init_app(app)
 
+    from datetime import datetime, timezone
+
+    def time_ago(dt):
+        if not dt:
+            return ''
+        # Handle naive datetimes as UTC for simplicity
+        if dt.tzinfo is None:
+            now = datetime.utcnow()
+        else:
+            now = datetime.now(timezone.utc)
+            dt = dt.astimezone(timezone.utc)
+        diff = now - dt
+        seconds = int(diff.total_seconds())
+        if seconds < 60:
+            return f"{seconds}秒前"
+        minutes = seconds // 60
+        if minutes < 60:
+            return f"{minutes}分前"
+        hours = minutes // 60
+        if hours < 24:
+            return f"{hours}時間前"
+        days = hours // 24
+        if days < 7:
+            return f"{days}日前"
+        weeks = days // 7
+        if weeks < 5:
+            return f"{weeks}週間前"
+        months = days // 30
+        if months < 12:
+            return f"{months}か月前"
+        years = days // 365
+        return f"{years}年前"
+
     with app.app_context():
         from app import routes  # imports views
         app.register_blueprint(routes.bp)
@@ -27,5 +60,8 @@ def create_app(config_object=None):
 
         # NOTE: Schema changes are intentionally not applied automatically.
         # If you add/remove columns, run migrations manually with your preferred tool.
+
+    # Jinja filter
+    app.jinja_env.filters['time_ago'] = time_ago
 
     return app

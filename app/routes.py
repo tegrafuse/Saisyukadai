@@ -1,69 +1,78 @@
 import os
+import shutil
 import uuid
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, g, current_app, send_from_directory
 from werkzeug.utils import secure_filename
-from models import User, Post, Message, db
+from models import User, Post, Message, PostImage, Community, Reply, CommunityFollow, PostLike, ReplyLike, ReplyImage, db
 import json
 
-
-def _profiles_path():
-    # store small profile bios in instance/profiles.json to avoid schema changes
-    path = os.path.join(current_app.instance_path, 'profiles.json')
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    return path
-
-
-def _read_profiles():
-    try:
-        with open(_profiles_path(), 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _write_profiles(d):
-    with open(_profiles_path(), 'w', encoding='utf-8') as f:
-        json.dump(d, f, ensure_ascii=False, indent=2)
-
-
-def get_profile_bio(username):
-    val = _read_profiles().get(username, {}).get('bio')
-    # normalize non-meaningful values to None
-    if not val or (isinstance(val, str) and val.strip().lower() in ('none','null')):
-        return None
-    return val
-
-
-def set_profile_bio(username, bio):
-    p = _read_profiles()
-    # if bio is falsy (None or empty string), remove the user's bio entry to avoid stale defaults
-    if not bio:
-        if username in p:
-            try:
-                del p[username]['bio']
-                # if the user object has no other keys, remove the user entirely
-                if not p[username]:
-                    del p[username]
-            except KeyError:
-                pass
-    else:
-        p.setdefault(username, {})
-        p[username]['bio'] = bio
-    _write_profiles(p)
-
-
-def remove_profile(username):
-    p = _read_profiles()
-    if username in p:
-        del p[username]
-        _write_profiles(p)
-
 bp = Blueprint('main', __name__)
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'mov', 'avi', 'mkv'}
 
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def ensure_default_communities():
+    """Create a couple of starter communities if none exist."""
+    defaults = [
+        {'name': '食べ物', 'description': '食に関する話題'},
+        {'name': 'ペット', 'description': 'ペットに関する話題'},
+        {'name': '日常', 'description': '日常の話題'},
+    ]
+    created = False
+    changed = False
+    # Create communities if missing
+    for d in defaults:
+        c = Community.query.filter_by(name=d['name']).first()
+        if not c:
+            c = Community(name=d['name'], description=d['description'])
+            db.session.add(c)
+            created = True
+        # Attach preset icon if missing and resource exists
+        if c and not c.icon_filename:
+            try:
+                # Look for preset icons in static/resources/community_icons/
+                # e.g., 食べ物 -> food.png, ペット -> pet.png
+                name_map = {
+                    '食べ物': ['food.png', 'food.jpg', 'food.jpeg', 'food.gif'],
+                    'ペット': ['pet.png', 'pet.jpg', 'pet.jpeg', 'pet.gif'],
+                    '日常': ['daily.png', 'daily.jpg', 'daily.jpeg', 'daily.gif'],
+                }
+                src_dir = os.path.join(os.path.dirname(current_app.root_path), 'static', 'resources', 'community_icons')
+                candidates = name_map.get(d['name'], [])
+                for fname in candidates:
+                    src_path = os.path.join(src_dir, fname)
+                    if os.path.isfile(src_path) and allowed_file(fname):
+                        # Save into uploads with UUID prefix
+                        base = secure_filename(fname)
+                        unique = f"{uuid.uuid4().hex}_{base}"
+                        dest_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
+                        try:
+                            shutil.copyfile(src_path, dest_path)
+                            c.icon_filename = unique
+                            changed = True
+                            break
+                        except Exception:
+                            pass
+            except Exception:
+                # Ignore preset icon errors silently
+                pass
+    if created or changed:
+        db.session.commit()
+
+
+def build_reply_tree(replies):
+    nodes = {r.id: {'reply': r, 'children': []} for r in replies}
+    roots = []
+    for r in replies:
+        node = nodes[r.id]
+        if r.parent_id and r.parent_id in nodes:
+            nodes[r.parent_id]['children'].append(node)
+        else:
+            roots.append(node)
+    return roots
 
 
 @bp.before_app_request
@@ -73,19 +82,103 @@ def load_logged_in_user():
     # Calculate unread message count for logged-in users
     if g.user:
         g.unread_count = Message.query.filter_by(recipient_id=g.user.id, is_read=False).count()
+        g.following_ids = {f.community_id for f in CommunityFollow.query.filter_by(user_id=g.user.id).all()}
+        # Get all liked post and reply IDs for templates
+        g.liked_post_ids = {like.post_id for like in PostLike.query.filter_by(user_id=g.user.id).all()}
+        g.liked_reply_ids = {like.reply_id for like in ReplyLike.query.filter_by(user_id=g.user.id).all()}
     else:
         g.unread_count = 0
+        g.following_ids = set()
+        g.liked_post_ids = set()
+        g.liked_reply_ids = set()
 
 
 @bp.route('/')
 def index():
-    posts = Post.query.order_by(Post.created_at.desc()).all()
-    return render_template('index.html', posts=posts, search_active=False)
+    ensure_default_communities()
+    tab = request.args.get('tab', 'home')  # home, latest, search
+    sort_by = request.args.get('sort', 'latest')  # latest, likes, replies
+    communities = Community.query.order_by(Community.name.asc()).all()
+    
+    # Get official communities (created_by is NULL)
+    official_communities = Community.query.filter(Community.created_by.is_(None)).order_by(Community.name.asc()).all()
+    
+    # Get followed communities for logged-in users
+    followed_communities = []
+    if g.user:
+        followed_ids = {f.community_id for f in CommunityFollow.query.filter_by(user_id=g.user.id).all()}
+        followed_communities = Community.query.filter(Community.id.in_(followed_ids)).order_by(Community.name.asc()).all() if followed_ids else []
+    
+    posts = []
+    selected_community = None
+    
+    if tab == 'home':
+        # Show only posts from followed communities
+        if g.user and followed_communities:
+            followed_ids = [c.id for c in followed_communities]
+            query = Post.query.filter(Post.community_id.in_(followed_ids))
+            posts = query.all()
+        # If not logged in or no follows, show nothing
+    elif tab == 'latest':
+        # Show all posts (login required)
+        if g.user:
+            query = Post.query.filter(Post.community_id.isnot(None))
+            posts = query.all()
+    elif tab == 'search':
+        # Search functionality
+        if g.user:
+            community_name = request.args.get('community_name', '').strip()
+            followers_min = request.args.get('followers_min', type=int)
+            followers_max = request.args.get('followers_max', type=int)
+            
+            query = Community.query
+            if community_name:
+                query = query.filter(Community.name.ilike(f'%{community_name}%'))
+            
+            search_communities = query.order_by(Community.name.asc()).all()
+            
+            # Filter by follower count
+            if followers_min is not None or followers_max is not None:
+                filtered = []
+                for c in search_communities:
+                    count = len(c.follows)
+                    if followers_min is not None and count < followers_min:
+                        continue
+                    if followers_max is not None and count > followers_max:
+                        continue
+                    filtered.append(c)
+                search_communities = filtered
+            
+            return render_template('search_communities.html', 
+                                 communities=communities,
+                                 official_communities=official_communities,
+                                 followed_communities=followed_communities,
+                                 search_results=search_communities,
+                                 search_params={'community_name': community_name, 'followers_min': followers_min, 'followers_max': followers_max})
+    
+    # Sort posts
+    if posts:
+        if sort_by == 'likes':
+            posts = sorted(posts, key=lambda p: len(p.likes), reverse=True)
+        elif sort_by == 'replies':
+            posts = sorted(posts, key=lambda p: len(p.replies), reverse=True)
+        else:  # latest (default)
+            posts = sorted(posts, key=lambda p: p.created_at, reverse=True)
+    
+    return render_template('index.html', 
+                         posts=posts, 
+                         communities=communities,
+                         official_communities=official_communities,
+                         followed_communities=followed_communities,
+                         selected_community=selected_community,
+                         sort_by=sort_by,
+                         current_tab=tab)
 
 
 @bp.route('/search', methods=['GET', 'POST'])
 def search_posts():
-    query = Post.query
+    ensure_default_communities()
+    query = Post.query.filter(Post.community_id.isnot(None))
     search_params = {
         'username': request.args.get('username', '').strip(),
         'body': request.args.get('body', '').strip(),
@@ -126,9 +219,160 @@ def search_posts():
             query = query.filter(Post.created_at < date_to)
         except (ValueError, TypeError):
             pass
+
+    sort_by = request.args.get('sort', 'latest')  # latest, likes, replies
+    communities = Community.query.order_by(Community.name.asc()).all()
+    posts = query.all()
     
-    posts = query.order_by(Post.created_at.desc()).all()
-    return render_template('index.html', posts=posts, search_active=True, search_params=search_params)
+    # Sort posts based on sort_by parameter
+    if sort_by == 'likes':
+        posts = sorted(posts, key=lambda p: len(p.likes), reverse=True)
+    elif sort_by == 'replies':
+        posts = sorted(posts, key=lambda p: len(p.replies), reverse=True)
+    else:  # latest (default)
+        posts = sorted(posts, key=lambda p: p.created_at, reverse=True)
+    
+    return render_template('index.html', posts=posts, communities=communities, selected_community=None, search_active=True, search_params=search_params, sort_by=sort_by)
+
+
+@bp.route('/communities/new', methods=['GET', 'POST'])
+def create_community():
+    if not g.user:
+        flash('ログインが必要です')
+        return redirect(url_for('main.login'))
+    
+    if request.method == 'POST':
+        name = (request.form.get('name') or '').strip()
+        description = (request.form.get('description') or '').strip()
+        icon = request.files.get('icon')
+        
+        if not name:
+            flash('コミュニティ名を入力してください')
+            return redirect(url_for('main.create_community'))
+        
+        if Community.query.filter_by(name=name).first():
+            flash('同名のコミュニティが既に存在します')
+            return redirect(url_for('main.create_community'))
+        
+        c = Community(name=name, description=description or None, created_by=g.user.id)
+        
+        # Handle icon upload
+        if icon and icon.filename != '' and allowed_file(icon.filename):
+            filename = secure_filename(icon.filename)
+            unique = f"{uuid.uuid4().hex}_{filename}"
+            save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
+            icon.save(save_path)
+            c.icon_filename = unique
+        
+        db.session.add(c)
+        db.session.commit()
+        
+        # 設立者を自動的にフォローさせる
+        follow = CommunityFollow(user_id=g.user.id, community_id=c.id)
+        db.session.add(follow)
+        db.session.commit()
+        
+        flash('コミュニティを作成しました')
+        return redirect(url_for('main.community_page', community_id=c.id))
+    
+    return render_template('create_community.html')
+
+
+@bp.route('/communities/<int:community_id>', methods=['GET'])
+def community_page(community_id):
+    c = Community.query.get_or_404(community_id)
+    
+    # Get statistics
+    posts_count = len(c.posts)
+    followers_count = len(c.follows)
+    
+    # Get sort parameter
+    sort_by = request.args.get('sort', 'latest')  # latest, likes, replies
+    posts = c.posts
+    
+    # Sort posts based on sort_by parameter
+    if sort_by == 'likes':
+        posts = sorted(posts, key=lambda p: len(p.likes), reverse=True)
+    elif sort_by == 'replies':
+        posts = sorted(posts, key=lambda p: len(p.replies), reverse=True)
+    else:  # latest (default)
+        posts = sorted(posts, key=lambda p: p.created_at, reverse=True)
+    
+    communities = Community.query.order_by(Community.name.asc()).all()
+    official_communities = Community.query.filter(Community.created_by.is_(None)).order_by(Community.name.asc()).all()
+    followed_communities = []
+    if g.user:
+        followed_ids = {f.community_id for f in CommunityFollow.query.filter_by(user_id=g.user.id).all()}
+        followed_communities = Community.query.filter(Community.id.in_(followed_ids)).order_by(Community.name.asc()).all() if followed_ids else []
+    
+    # Get creator info
+    creator = User.query.get(c.created_by) if c.created_by else None
+    
+    return render_template('community.html', 
+                         community=c, 
+                         posts=posts,
+                         posts_count=posts_count,
+                         followers_count=followers_count,
+                         communities=communities,
+                         followed_communities=followed_communities,
+                         official_communities=official_communities,
+                         creator=creator,
+                         sort_by=sort_by)
+
+
+
+@bp.route('/communities/<int:community_id>/follow', methods=['POST'])
+def follow_community(community_id):
+    if not g.user:
+        flash('ログインが必要です')
+        return redirect(url_for('main.login'))
+    community = Community.query.get_or_404(community_id)
+    existing = CommunityFollow.query.filter_by(user_id=g.user.id, community_id=community.id).first()
+    if not existing:
+        db.session.add(CommunityFollow(user_id=g.user.id, community_id=community.id))
+        db.session.commit()
+        flash(f'{community.name} をフォローしました')
+    next_url = request.form.get('next') or url_for('main.index', community=community.id)
+    return redirect(next_url)
+
+
+@bp.route('/communities/<int:community_id>/unfollow', methods=['POST'])
+def unfollow_community(community_id):
+    if not g.user:
+        flash('ログインが必要です')
+        return redirect(url_for('main.login'))
+    community = Community.query.get_or_404(community_id)
+    
+    # 設立者はフォロー解除できない
+    if community.created_by == g.user.id:
+        flash('設立者はこのコミュニティをフォロー解除できません')
+        next_url = request.form.get('next') or url_for('main.community_page', community_id=community.id)
+        return redirect(next_url)
+    
+    existing = CommunityFollow.query.filter_by(user_id=g.user.id, community_id=community.id).first()
+    if existing:
+        db.session.delete(existing)
+        db.session.commit()
+        flash(f'{community.name} のフォローを解除しました')
+    next_url = request.form.get('next') or url_for('main.index', community=community.id)
+    return redirect(next_url)
+
+
+@bp.route('/communities/<int:community_id>/delete', methods=['POST'])
+def delete_community(community_id):
+    if not g.user:
+        flash('ログインが必要です')
+        return redirect(url_for('main.login'))
+    community = Community.query.get_or_404(community_id)
+    # Only creator can delete
+    if community.created_by != g.user.id:
+        flash('コミュニティを削除する権限がありません')
+        return redirect(url_for('main.index', community=community.id))
+    name = community.name
+    db.session.delete(community)
+    db.session.commit()
+    flash(f'{name} を削除しました')
+    return redirect(url_for('main.index'))
 
 # Posts
 @bp.route('/post', methods=['POST'])
@@ -137,39 +381,183 @@ def create_post():
         flash('ログインが必要です')
         return redirect(url_for('main.login'))
     body = request.form.get('body')
-    file = request.files.get('image')
-    has_valid_image = bool(file and file.filename != '' and allowed_file(file.filename))
-    if not body and not has_valid_image:
-        flash('本文または画像が必要です')
+    community_id_raw = request.form.get('community_id')
+    try:
+        community_id = int(community_id_raw) if community_id_raw else None
+    except ValueError:
+        community_id = None
+    if not community_id:
+        flash('コミュニティを選択してください')
+        return redirect(url_for('main.index'))
+    community = Community.query.get(community_id)
+    if not community:
+        flash('選択したコミュニティが見つかりません')
+        return redirect(url_for('main.index'))
+    # Require follow to create a thread
+    is_following = CommunityFollow.query.filter_by(user_id=g.user.id, community_id=community.id).first()
+    if not is_following:
+        flash('このコミュニティをフォローするとスレッドを立てられます')
+        return redirect(url_for('main.index', community=community.id))
+    
+    # Get all uploaded files
+    uploaded_files = request.files.getlist('files')
+    
+    # Separate images and video
+    image_files = []
+    video_file = None
+    
+    for file in uploaded_files:
+        if not file or file.filename == '':
+            continue
+        
+        if not allowed_file(file.filename):
+            flash('無効なファイル形式です：' + file.filename)
+            return redirect(url_for('main.index'))
+        
+        if file.content_type.startswith('image/'):
+            if len(image_files) < 4:
+                image_files.append(file)
+            else:
+                flash('画像は最大4個までです')
+                return redirect(url_for('main.index'))
+        elif file.content_type.startswith('video/'):
+            if video_file is None:
+                video_file = file
+            else:
+                flash('動画は1つまでです')
+                return redirect(url_for('main.index'))
+    
+    # Validation: must have body or files
+    if not body and not image_files and not video_file:
+        flash('本文、画像、または動画が必要です')
+        return redirect(url_for('main.index'))
+    
+    # Validation: can't have both images and video
+    if image_files and video_file:
+        flash('画像と動画は同時に添付できません')
         return redirect(url_for('main.index'))
 
-    # create post instance
-    p = Post(body=body or '', user_id=g.user.id)
+    # Create post instance
+    p = Post(body=body or '', user_id=g.user.id, community_id=community.id)
 
-    # handle image upload (optional single image)
-    if file and file.filename != '':
-        if allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+    # Handle image uploads (up to 4)
+    for order, image_file in enumerate(image_files):
+        if image_file and image_file.filename != '':
+            filename = secure_filename(image_file.filename)
             unique = f"{uuid.uuid4().hex}_{filename}"
             save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
-            file.save(save_path)
-            p.image_filename = unique
-            p.image_caption = request.form.get('image_caption')
-            # ensure body is at least empty string (already handled)
-        else:
-            flash('無効なファイルです')
-            return redirect(url_for('main.index'))
+            image_file.save(save_path)
+            # Create PostImage record
+            img = PostImage(filename=unique, order=order)
+            p.images.append(img)
+    
+    # Handle video upload (max 1)
+    if video_file and video_file.filename != '':
+        filename = secure_filename(video_file.filename)
+        unique = f"{uuid.uuid4().hex}_{filename}"
+        save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
+        video_file.save(save_path)
+        p.video_filename = unique
 
     db.session.add(p)
     db.session.commit()
     flash('投稿しました')
-    return redirect(url_for('main.index'))
+    return redirect(url_for('main.view_post', post_id=p.id))
 
 
 @bp.route('/post/<int:post_id>')
 def view_post(post_id):
     p = Post.query.get_or_404(post_id)
-    return render_template('view_post.html', post=p)
+    replies = Reply.query.filter_by(post_id=p.id).order_by(Reply.created_at.asc()).all()
+    reply_tree = build_reply_tree(replies)
+    communities = Community.query.order_by(Community.name.asc()).all()
+    official_communities = Community.query.filter(Community.created_by.is_(None)).order_by(Community.name.asc()).all()
+    followed_communities = []
+    if g.user:
+        followed_ids = {f.community_id for f in CommunityFollow.query.filter_by(user_id=g.user.id).all()}
+        followed_communities = Community.query.filter(Community.id.in_(followed_ids)).order_by(Community.name.asc()).all() if followed_ids else []
+    return render_template('view_post.html', post=p, reply_tree=reply_tree, communities=communities, followed_communities=followed_communities, official_communities=official_communities)
+
+
+@bp.route('/post/<int:post_id>/reply', methods=['POST'])
+def reply_post(post_id):
+    if not g.user:
+        flash('ログインが必要です')
+        return redirect(url_for('main.login'))
+    body = (request.form.get('body') or '').strip()
+    parent_reply_raw = request.form.get('parent_reply_id')
+    parent_reply_id = None
+    try:
+        parent_reply_id = int(parent_reply_raw) if parent_reply_raw else None
+    except ValueError:
+        parent_reply_id = None
+
+    post = Post.query.get_or_404(post_id)
+    parent_reply = None
+    if parent_reply_id:
+        parent_reply = Reply.query.filter_by(id=parent_reply_id, post_id=post_id).first()
+        if not parent_reply:
+            flash('返信先が見つかりません')
+            return redirect(url_for('main.view_post', post_id=post_id))
+
+    # Handle attachments (up to 4 images OR 1 video)
+    uploaded_files = request.files.getlist('files')
+    image_files = []
+    video_file = None
+
+    for file in uploaded_files:
+        if not file or file.filename == '':
+            continue
+        if not allowed_file(file.filename):
+            flash('無効なファイル形式です：' + file.filename)
+            return redirect(url_for('main.view_post', post_id=post_id))
+
+        if file.content_type.startswith('image/'):
+            if len(image_files) < 4:
+                image_files.append(file)
+            else:
+                flash('画像は最大4個までです')
+                return redirect(url_for('main.view_post', post_id=post_id))
+        elif file.content_type.startswith('video/'):
+            if video_file is None:
+                video_file = file
+            else:
+                flash('動画は1つまでです')
+                return redirect(url_for('main.view_post', post_id=post_id))
+
+    # Require body or at least one attachment
+    if not body and not image_files and not video_file:
+        flash('返信本文、画像、または動画が必要です')
+        return redirect(url_for('main.view_post', post_id=post_id))
+
+    # Cannot mix images and video
+    if image_files and video_file:
+        flash('画像と動画は同時に添付できません')
+        return redirect(url_for('main.view_post', post_id=post_id))
+
+    r = Reply(body=body or '', post_id=post.id, user_id=g.user.id, parent_id=(parent_reply.id if parent_reply else None))
+
+    # Save images
+    for order, image_file in enumerate(image_files):
+        filename = secure_filename(image_file.filename)
+        unique = f"{uuid.uuid4().hex}_{filename}"
+        save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
+        image_file.save(save_path)
+        img = ReplyImage(filename=unique, order=order)
+        r.images.append(img)
+
+    # Save video
+    if video_file and video_file.filename != '':
+        filename = secure_filename(video_file.filename)
+        unique = f"{uuid.uuid4().hex}_{filename}"
+        save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
+        video_file.save(save_path)
+        r.video_filename = unique
+
+    db.session.add(r)
+    db.session.commit()
+    flash('返信しました')
+    return redirect(url_for('main.view_post', post_id=post_id))
 
 
 @bp.route('/post/<int:post_id>/edit', methods=['GET', 'POST'])
@@ -186,12 +574,34 @@ def delete_post(post_id):
     if not g.user or g.user.id != p.user_id:
         flash('権限がありません')
         return redirect(url_for('main.index'))
-    # remove attached image file
-    if p.image_filename:
+    
+    # Remove attached image files
+    for img in p.images:
         try:
-            os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], p.image_filename))
+            os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], img.filename))
         except Exception:
             pass
+    
+    # Remove attached video file
+    if p.video_filename:
+        try:
+            os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], p.video_filename))
+        except Exception:
+            pass
+
+    # Remove reply attachments (images/videos)
+    for reply in p.replies:
+        for rimg in reply.images:
+            try:
+                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], rimg.filename))
+            except Exception:
+                pass
+        if reply.video_filename:
+            try:
+                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], reply.video_filename))
+            except Exception:
+                pass
+    
     db.session.delete(p)
     db.session.commit()
     flash('削除しました')
@@ -206,6 +616,62 @@ def delete_post(post_id):
             path = parsed.path or url_for('main.index')
             return redirect(path)
     return redirect(url_for('main.index'))
+
+
+@bp.route('/post/<int:post_id>/like', methods=['POST'])
+def like_post(post_id):
+    from flask import jsonify
+    if not g.user:
+        return jsonify({'error': 'ログインが必要です'}), 401
+    post = Post.query.get_or_404(post_id)
+    existing = PostLike.query.filter_by(user_id=g.user.id, post_id=post.id).first()
+    if not existing:
+        db.session.add(PostLike(user_id=g.user.id, post_id=post.id))
+        db.session.commit()
+    like_count = PostLike.query.filter_by(post_id=post.id).count()
+    return jsonify({'success': True, 'liked': True, 'like_count': like_count})
+
+
+@bp.route('/post/<int:post_id>/unlike', methods=['POST'])
+def unlike_post(post_id):
+    from flask import jsonify
+    if not g.user:
+        return jsonify({'error': 'ログインが必要です'}), 401
+    post = Post.query.get_or_404(post_id)
+    existing = PostLike.query.filter_by(user_id=g.user.id, post_id=post.id).first()
+    if existing:
+        db.session.delete(existing)
+        db.session.commit()
+    like_count = PostLike.query.filter_by(post_id=post.id).count()
+    return jsonify({'success': True, 'liked': False, 'like_count': like_count})
+
+
+@bp.route('/reply/<int:reply_id>/like', methods=['POST'])
+def like_reply(reply_id):
+    from flask import jsonify
+    if not g.user:
+        return jsonify({'error': 'ログインが必要です'}), 401
+    reply = Reply.query.get_or_404(reply_id)
+    existing = ReplyLike.query.filter_by(user_id=g.user.id, reply_id=reply.id).first()
+    if not existing:
+        db.session.add(ReplyLike(user_id=g.user.id, reply_id=reply.id))
+        db.session.commit()
+    like_count = ReplyLike.query.filter_by(reply_id=reply.id).count()
+    return jsonify({'success': True, 'liked': True, 'like_count': like_count})
+
+
+@bp.route('/reply/<int:reply_id>/unlike', methods=['POST'])
+def unlike_reply(reply_id):
+    from flask import jsonify
+    if not g.user:
+        return jsonify({'error': 'ログインが必要です'}), 401
+    reply = Reply.query.get_or_404(reply_id)
+    existing = ReplyLike.query.filter_by(user_id=g.user.id, reply_id=reply.id).first()
+    if existing:
+        db.session.delete(existing)
+        db.session.commit()
+    like_count = ReplyLike.query.filter_by(reply_id=reply.id).count()
+    return jsonify({'success': True, 'liked': False, 'like_count': like_count})
 
 # Messages (unchanged)
 
@@ -235,8 +701,6 @@ def register():
             u.avatar_filename = unique
         db.session.add(u)
         db.session.commit()
-        # ensure there is no stale profile bio data for this username
-        remove_profile(u.username)
         session['user_id'] = u.id
         flash('登録してログインしました')
         return redirect(url_for('main.index'))
@@ -276,8 +740,7 @@ def settings():
         avatar = request.files.get('avatar')
         # update fields
         g.user.display_name = display_name or None
-        # save bio to profiles store (avoids DB schema change)
-        set_profile_bio(g.user.username, bio or None)
+        g.user.bio = bio or None
         # handle avatar
         if request.form.get('remove_avatar'):
             if g.user.avatar_filename:
@@ -313,7 +776,7 @@ def settings():
                 return redirect(path)
         return redirect(url_for('main.settings'))
     # GET: include current bio for the form
-    bio = get_profile_bio(g.user.username)
+    bio = g.user.bio
     return render_template('settings.html', bio=bio)
 
 
@@ -323,9 +786,30 @@ def user(username):
     if not u:
         flash('ユーザーが見つかりません')
         return redirect(url_for('main.index'))
-    posts = Post.query.filter_by(user_id=u.id).order_by(Post.created_at.desc()).all()
-    bio = get_profile_bio(u.username)
-    return render_template('user.html', user=u, posts=posts, bio=bio)
+    sort_by = request.args.get('sort', 'latest')  # latest, likes, replies
+    posts = Post.query.filter_by(user_id=u.id).all()
+    
+    # Sort posts based on sort_by parameter
+    if sort_by == 'likes':
+        posts = sorted(posts, key=lambda p: len(p.likes), reverse=True)
+    elif sort_by == 'replies':
+        posts = sorted(posts, key=lambda p: len(p.replies), reverse=True)
+    else:  # latest (default)
+        posts = sorted(posts, key=lambda p: p.created_at, reverse=True)
+    
+    communities = Community.query.order_by(Community.name.asc()).all()
+    official_communities = Community.query.filter(Community.created_by.is_(None)).order_by(Community.name.asc()).all()
+    followed_communities = []
+    if g.user:
+        followed_ids = {f.community_id for f in CommunityFollow.query.filter_by(user_id=g.user.id).all()}
+        followed_communities = Community.query.filter(Community.id.in_(followed_ids)).order_by(Community.name.asc()).all() if followed_ids else []
+    
+    # Get communities followed by the displayed user
+    user_followed_ids = {f.community_id for f in CommunityFollow.query.filter_by(user_id=u.id).all()}
+    user_followed_communities = Community.query.filter(Community.id.in_(user_followed_ids)).order_by(Community.name.asc()).all() if user_followed_ids else []
+    
+    bio = u.bio
+    return render_template('user.html', user=u, posts=posts, bio=bio, sort_by=sort_by, communities=communities, followed_communities=followed_communities, official_communities=official_communities, user_followed_communities=user_followed_communities)
 
 
 @bp.route('/messages/<username>', methods=['GET', 'POST'])
@@ -433,7 +917,13 @@ def messages():
                     msg.read_at = datetime.utcnow()
             db.session.commit()
 
-    return render_template('messages.html', partners=partner_objs, other=other, messages_thread=thread)
+    communities = Community.query.order_by(Community.name.asc()).all()
+    official_communities = Community.query.filter(Community.created_by.is_(None)).order_by(Community.name.asc()).all()
+    followed_communities = []
+    if g.user:
+        followed_ids = {f.community_id for f in CommunityFollow.query.filter_by(user_id=g.user.id).all()}
+        followed_communities = Community.query.filter(Community.id.in_(followed_ids)).order_by(Community.name.asc()).all() if followed_ids else []
+    return render_template('messages.html', partners=partner_objs, other=other, messages_thread=thread, communities=communities, followed_communities=followed_communities, official_communities=official_communities)
 
 
 @bp.route('/message/<int:msg_id>/delete', methods=['POST'])
@@ -511,6 +1001,45 @@ def api_unread_count():
     
     unread_count = Message.query.filter_by(recipient_id=g.user.id, is_read=False).count()
     return jsonify({'unread_count': unread_count})
+
+
+@bp.route('/api/partner-unread-count/<username>')
+def api_partner_unread_count(username):
+    """API endpoint to fetch unread message count for a specific partner"""
+    from flask import jsonify
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    # Get the partner user
+    partner = User.query.filter_by(username=username).first()
+    if not partner:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Count unread messages from this specific partner
+    unread_count = Message.query.filter_by(sender_id=partner.id, recipient_id=g.user.id, is_read=False).count()
+    return jsonify({'unread_count': unread_count, 'username': username})
+
+
+@bp.route('/api/post/<int:post_id>/images')
+def api_post_images(post_id):
+    """API endpoint to fetch all images for a post"""
+    from flask import jsonify
+    post = Post.query.get_or_404(post_id)
+    
+    # Get all images sorted by order
+    images = [{'filename': img.filename, 'order': img.order} for img in sorted(post.images, key=lambda x: x.order)]
+    return jsonify({'post_id': post_id, 'images': images})
+
+
+@bp.route('/api/reply/<int:reply_id>/images')
+def api_reply_images(reply_id):
+    """API endpoint to fetch all images for a reply"""
+    from flask import jsonify
+    reply = Reply.query.get_or_404(reply_id)
+    
+    # Get all images sorted by order
+    images = [{'filename': img.filename, 'order': img.order} for img in sorted(reply.images, key=lambda x: x.order)]
+    return jsonify({'reply_id': reply_id, 'images': images})
 
 
 @bp.route('/uploads/<path:filename>')

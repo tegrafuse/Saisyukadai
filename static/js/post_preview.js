@@ -1,4 +1,146 @@
 document.addEventListener('DOMContentLoaded', function(){
+  // Unified file input for post images and videos
+  const postFileInput = document.getElementById('post-file-input');
+  if(postFileInput){
+    const mediaPreview = document.getElementById('post-media-preview');
+    const imagesPreview = document.getElementById('post-images-preview');
+    const videoPreview = document.getElementById('post-video-preview');
+    const removeBtn = document.getElementById('post-remove-media');
+    
+    // Track selected files
+    let selectedImages = [];
+    let selectedVideo = null;
+    
+    function updatePreview() {
+      imagesPreview.innerHTML = '';
+      videoPreview.innerHTML = '';
+      
+      // Display images (max 4)
+      selectedImages.slice(0, 4).forEach((file, idx) => {
+        const url = URL.createObjectURL(file);
+        const div = document.createElement('div');
+        div.className = 'mb-2';
+        div.innerHTML = `
+          <div class="d-flex gap-2 align-items-center">
+            <img src="${url}" class="img-thumbnail" style="width:80px;height:80px;object-fit:cover">
+            <div>
+              <p class="mb-1 small">${file.name}</p>
+              <button type="button" class="btn btn-sm btn-outline-danger remove-image" data-index="${idx}">削除</button>
+            </div>
+          </div>
+        `;
+        imagesPreview.appendChild(div);
+      });
+      
+      // Display video (max 1)
+      if(selectedVideo) {
+        const url = URL.createObjectURL(selectedVideo);
+        videoPreview.innerHTML = `
+          <div class="mb-2">
+            <p class="mb-2 small">動画: ${selectedVideo.name}</p>
+            <video controls style="max-width:300px;max-height:240px;border-radius:8px">
+              <source src="${url}">
+            </video>
+            <div class="mt-2">
+              <button type="button" class="btn btn-sm btn-outline-danger" id="remove-video">削除</button>
+            </div>
+          </div>
+        `;
+      }
+      
+      // Show/hide preview container
+      if(selectedImages.length > 0 || selectedVideo) {
+        mediaPreview.style.display = 'block';
+      } else {
+        mediaPreview.style.display = 'none';
+        postFileInput.value = '';
+      }
+      
+      // Attach event listeners to remove buttons
+      document.querySelectorAll('.remove-image').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const idx = parseInt(btn.dataset.index);
+          selectedImages.splice(idx, 1);
+          updatePreview();
+          updateFileInput();
+        });
+      });
+      
+      const removeVideoBtn = document.getElementById('remove-video');
+      if(removeVideoBtn) {
+        removeVideoBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          selectedVideo = null;
+          updatePreview();
+          updateFileInput();
+        });
+      }
+    }
+    
+    function updateFileInput() {
+      // Create a new FileList-like object for form submission
+      const dt = new DataTransfer();
+      selectedImages.forEach(file => dt.items.add(file));
+      if(selectedVideo) dt.items.add(selectedVideo);
+      postFileInput.files = dt.files;
+    }
+    
+    postFileInput.addEventListener('change', function(e){
+      const files = Array.from(e.target.files);
+      let hasImages = selectedImages.length > 0;
+      let hasVideo = selectedVideo !== null;
+      let newImages = [];
+      let newVideo = null;
+      
+      files.forEach(file => {
+        const isImage = file.type.startsWith('image/');
+        const isVideo = file.type.startsWith('video/');
+        
+        if(isImage) {
+          // Can't mix images and video
+          if(hasVideo) {
+            alert('動画が既に選択されています。画像と動画は同時に添付できません。');
+            return;
+          }
+          // Max 4 images
+          if(selectedImages.length + newImages.length < 4) {
+            newImages.push(file);
+          } else {
+            alert('画像は最大4個まで選択できます。');
+          }
+        } else if(isVideo) {
+          // Can't mix images and video
+          if(hasImages || newImages.length > 0) {
+            alert('画像が既に選択されています。画像と動画は同時に添付できません。');
+            return;
+          }
+          // Max 1 video
+          if(!hasVideo && !newVideo) {
+            newVideo = file;
+          } else {
+            alert('動画は1つまでしか選択できません。');
+          }
+        }
+      });
+      
+      selectedImages.push(...newImages);
+      if(newVideo) selectedVideo = newVideo;
+      
+      updatePreview();
+      updateFileInput();
+    });
+    
+    if(removeBtn) {
+      removeBtn.addEventListener('click', function(e){
+        e.preventDefault();
+        selectedImages = [];
+        selectedVideo = null;
+        updatePreview();
+      });
+    }
+  }
+
   // post image preview (only on the feed page)
   const postInput = document.getElementById('post-image-input');
   if(postInput){
@@ -12,6 +154,21 @@ document.addEventListener('DOMContentLoaded', function(){
       postImg.src = url; postPreview.style.display='block';
     });
     if(postRemoveBtn) postRemoveBtn.addEventListener('click', function(){ postInput.value=''; postImg.src=''; postPreview.style.display='none'; });
+  }
+
+  // post video preview (only on the feed page)
+  const postVideoInput = document.getElementById('post-video-input');
+  if(postVideoInput){
+    const postVideoPreview = document.getElementById('post-video-preview');
+    const postVideo = document.getElementById('post-preview-video');
+    const postRemoveVideoBtn = document.getElementById('post-remove-video');
+    postVideoInput.addEventListener('change', function(e){
+      const file = e.target.files[0];
+      if(!file) { postVideoPreview.style.display='none'; return }
+      const url = URL.createObjectURL(file);
+      postVideo.src = url; postVideoPreview.style.display='block';
+    });
+    if(postRemoveVideoBtn) postRemoveVideoBtn.addEventListener('click', function(){ postVideoInput.value=''; postVideo.src=''; postVideoPreview.style.display='none'; });
   }
 
   // register/settings avatar preview (handles both IDs)

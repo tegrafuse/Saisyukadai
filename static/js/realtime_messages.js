@@ -1,4 +1,4 @@
-// Message chat with auto-scroll
+// Message chat with auto-scroll and partner badge updates
 (function() {
   const chatDiv = document.querySelector('.chat');
   if (!chatDiv) return;
@@ -29,6 +29,37 @@
     return (chatDiv.scrollHeight - chatDiv.scrollTop - chatDiv.clientHeight) < 100;
   }
   
+  // Update partner list badge (for the currently active conversation)
+  function updatePartnerBadge() {
+    fetch(`/api/partner-unread-count/${username}`)
+      .then(r => r.json())
+      .then(data => {
+        const partnerLink = document.querySelector(`[data-partner-username="${username}"]`);
+        if (!partnerLink) return;
+        
+        let badgeEl = partnerLink.querySelector('.partner-unread-badge');
+        const unreadCount = data.unread_count || 0;
+        
+        if (unreadCount > 0) {
+          if (!badgeEl) {
+            // Create badge if it doesn't exist
+            badgeEl = document.createElement('span');
+            badgeEl.className = 'badge bg-danger rounded-pill partner-unread-badge';
+            badgeEl.dataset.unreadCount = unreadCount;
+            partnerLink.appendChild(badgeEl);
+          }
+          badgeEl.textContent = unreadCount;
+          badgeEl.style.display = 'inline-block';
+        } else {
+          // Remove badge if count is 0
+          if (badgeEl) {
+            badgeEl.remove();
+          }
+        }
+      })
+      .catch(e => console.log('partner badge update error', e));
+  }
+  
   // Initial scroll on load - multiple attempts
   scrollBottom();
   setTimeout(scrollBottom, 0);
@@ -42,7 +73,10 @@
     setTimeout(scrollBottom, 50);
   });
   
-  // Polling for new messages
+  // Store message states to track read status changes
+  const messageStates = {};
+  
+  // Polling for new messages and read status updates
   setInterval(() => {
     fetch(`/api/messages/${username}`)
       .then(r => r.json())
@@ -55,8 +89,10 @@
         
         data.messages.forEach(msg => {
           if (!existing.has(msg.id)) {
+            // New message
             existing.add(msg.id);
             newAdded = true;
+            messageStates[msg.id] = { is_read: msg.is_read, sender_id: msg.sender_id };
             
             const msgEl = document.createElement('div');
             msgEl.className = 'd-flex mb-2';
@@ -70,7 +106,7 @@
               msgEl.innerHTML = `
                 <div class="me-2 text-end" style="max-width:70%">
                   <div class="bubble bubble-right">${escapeHtml(msg.body)}</div>
-                  <div class="text-muted small mt-1">${msg.created_at}${msg.is_read ? '<span class="ms-1 text-info">✓✓</span>' : ''}</div>
+                  <div class="text-muted small mt-1"><span class="msg-time">${msg.created_at}</span><span class="msg-read-mark">${msg.recipient_id && msg.is_read ? '<span class="ms-1 text-muted" style="font-size:0.85em">✓ 既読</span>' : ''}</span></div>
                 </div>
                 <div>${avatar}</div>
               `;
@@ -85,13 +121,37 @@
             }
             
             chatDiv.appendChild(msgEl);
+          } else {
+            // Existing message - check for read status changes
+            if (messageStates[msg.id] !== undefined && !messageStates[msg.id].is_read && msg.is_read) {
+              // Read status changed from false to true
+              messageStates[msg.id].is_read = true;
+              
+              const msgEl = chatDiv.querySelector(`[data-message-id="${msg.id}"]`);
+              if (msgEl) {
+                const readMark = msgEl.querySelector('.msg-read-mark');
+                if (readMark) {
+                  readMark.innerHTML = '<span class="ms-1 text-info">✓</span>';
+                }
+              }
+            } else if (messageStates[msg.id] === undefined) {
+              // Initialize state for existing messages
+              messageStates[msg.id] = { is_read: msg.is_read, sender_id: msg.sender_id };
+            }
           }
         });
         
-        if (newAdded && wasBottom) setTimeout(scrollBottom, 10);
+        // After new messages are added, update the partner badge
+        if (newAdded) {
+          updatePartnerBadge();
+          if (wasBottom) setTimeout(scrollBottom, 10);
+        }
       })
       .catch(e => console.log('poll error', e));
   }, 2000);
+  
+  // Update partner badge every 3 seconds to keep it in sync
+  setInterval(updatePartnerBadge, 3000);
   
   // Form submission
   form.addEventListener('submit', e => {
