@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   </head>
   <body>
-    <header class="container-fluid">
+    <header class="container-fluid" style="background-color:#ffffff;border-bottom:1px solid #e6e9ef;">
       <nav class="navbar py-2">
         <div class="header">
           <div class="logo" style="width:32px;height:32px"></div>
@@ -18,7 +18,7 @@
         <div>
           {% if g.user %}
             {% if g.user.avatar_filename %}
-              <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" alt="avatar" class="rounded-circle" style="width:32px;height:32px;object-fit:cover; margin-right:8px">
+              <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename|build_upload_path('avatars')) }}" alt="avatar" class="rounded-circle" style="width:32px;height:32px;object-fit:cover; margin-right:8px">
             {% endif %}
             <a class="me-3 text-decoration-none text-dark" href="{{ url_for('main.user', username=g.user.username) }}" style="font-size:0.9rem">{{ g.user.display_name or g.user.username }}</a>
             <a class="me-2 position-relative" href="{{ url_for('main.messages') }}" style="font-size:0.9rem">
@@ -35,6 +35,7 @@
                 </span>
               {% endif %}
             </a>
+            <a class="me-2 text-decoration-none text-dark" href="{{ url_for('main.settings') }}" style="font-size:0.9rem">⚙️ 設定</a>
             <a class="btn btn-sm" href="{{ url_for('main.logout') }}" style="font-size:0.9rem">ログアウト</a>
           {% else %}
             <a class="me-2" href="{{ url_for('main.register') }}" style="font-size:0.9rem">登録</a>

@@ -53,6 +53,12 @@ def create_app(config_object=None):
         years = days // 365
         return f"{years}年前"
 
+    def build_upload_path(filename, upload_type):
+        """テンプレート内で用途別ディレクトリパスを生成"""
+        if not filename:
+            return ''
+        return f"{upload_type}/{filename}"
+
     with app.app_context():
         from app import routes  # imports views
         app.register_blueprint(routes.bp)
@@ -63,5 +69,6 @@ def create_app(config_object=None):
 
     # Jinja filter
     app.jinja_env.filters['time_ago'] = time_ago
+    app.jinja_env.filters['build_upload_path'] = build_upload_path
 
     return app

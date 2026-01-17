@@ -14,6 +14,50 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def get_upload_dir(upload_type):
+    """用途別のアップロードディレクトリを取得・作成"""
+    valid_types = {
+        'avatars': 'ユーザープロフィール画像',
+        'community_icons': 'コミュニティアイコン',
+        'posts': '投稿画像・動画',
+        'replies': '返信画像・動画'
+    }
+    if upload_type not in valid_types:
+        raise ValueError(f"Invalid upload type: {upload_type}")
+    
+    upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], upload_type)
+    os.makedirs(upload_dir, exist_ok=True)
+    return upload_dir
+
+
+def save_upload_file(file, upload_type):
+    """ファイルを用途別ディレクトリに保存し、ファイル名を返す"""
+    if not file or file.filename == '' or not allowed_file(file.filename):
+        return None
+    
+    filename = secure_filename(file.filename)
+    unique = f"{uuid.uuid4().hex}_{filename}"
+    upload_dir = get_upload_dir(upload_type)
+    save_path = os.path.join(upload_dir, unique)
+    file.save(save_path)
+    return unique
+
+
+def delete_upload_file(filename, upload_type):
+    """用途別ディレクトリからファイルを削除"""
+    if not filename:
+        return
+    
+    upload_dir = get_upload_dir(upload_type)
+    file_path = os.path.join(upload_dir, filename)
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception:
+        pass
+
+
+
 def ensure_default_communities():
     """Create a couple of starter communities if none exist."""
     defaults = [
@@ -45,10 +89,11 @@ def ensure_default_communities():
                 for fname in candidates:
                     src_path = os.path.join(src_dir, fname)
                     if os.path.isfile(src_path) and allowed_file(fname):
-                        # Save into uploads with UUID prefix
+                        # Save into uploads/community_icons with UUID prefix
                         base = secure_filename(fname)
                         unique = f"{uuid.uuid4().hex}_{base}"
-                        dest_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
+                        dest_dir = get_upload_dir('community_icons')
+                        dest_path = os.path.join(dest_dir, unique)
                         try:
                             shutil.copyfile(src_path, dest_path)
                             c.icon_filename = unique
@@ -98,6 +143,11 @@ def index():
     ensure_default_communities()
     tab = request.args.get('tab', 'home')  # home, latest, search
     sort_by = request.args.get('sort', 'latest')  # latest, likes, replies
+    
+    # If not logged in, default to 'latest' tab instead of 'home'
+    if not g.user and tab == 'home':
+        tab = 'latest'
+    
     communities = Community.query.order_by(Community.name.asc()).all()
     
     # Get official communities (created_by is NULL)
@@ -120,22 +170,31 @@ def index():
             posts = query.all()
         # If not logged in or no follows, show nothing
     elif tab == 'latest':
-        # Show all posts (login required)
-        if g.user:
-            query = Post.query.filter(Post.community_id.isnot(None))
-            posts = query.all()
+        # Show all posts
+        query = Post.query.filter(Post.community_id.isnot(None))
+        posts = query.all()
     elif tab == 'search':
         # Search functionality
         if g.user:
             community_name = request.args.get('community_name', '').strip()
             followers_min = request.args.get('followers_min', type=int)
             followers_max = request.args.get('followers_max', type=int)
+            sort_by = request.args.get('sort', 'name')  # name, followers, created_at
             
             query = Community.query
             if community_name:
                 query = query.filter(Community.name.ilike(f'%{community_name}%'))
             
-            search_communities = query.order_by(Community.name.asc()).all()
+            # Apply sorting
+            if sort_by == 'followers':
+                # Sort by followers count (requires Python sorting after query)
+                search_communities = query.all()
+                search_communities = sorted(search_communities, key=lambda c: len(c.follows), reverse=True)
+            elif sort_by == 'created_at':
+                # Sort by creation date (newest first)
+                search_communities = query.order_by(Community.created_at.desc()).all()
+            else:  # 'name' (default)
+                search_communities = query.order_by(Community.name.asc()).all()
             
             # Filter by follower count
             if followers_min is not None or followers_max is not None:
@@ -154,7 +213,8 @@ def index():
                                  official_communities=official_communities,
                                  followed_communities=followed_communities,
                                  search_results=search_communities,
-                                 search_params={'community_name': community_name, 'followers_min': followers_min, 'followers_max': followers_max})
+                                 search_params={'community_name': community_name, 'followers_min': followers_min, 'followers_max': followers_max},
+                                 sort_by=sort_by)
     
     # Sort posts
     if posts:
@@ -257,12 +317,9 @@ def create_community():
         c = Community(name=name, description=description or None, created_by=g.user.id)
         
         # Handle icon upload
-        if icon and icon.filename != '' and allowed_file(icon.filename):
-            filename = secure_filename(icon.filename)
-            unique = f"{uuid.uuid4().hex}_{filename}"
-            save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
-            icon.save(save_path)
-            c.icon_filename = unique
+        if icon and icon.filename != '':
+            icon_filename = save_upload_file(icon, 'community_icons')
+            c.icon_filename = icon_filename
         
         db.session.add(c)
         db.session.commit()
@@ -443,21 +500,17 @@ def create_post():
     # Handle image uploads (up to 4)
     for order, image_file in enumerate(image_files):
         if image_file and image_file.filename != '':
-            filename = secure_filename(image_file.filename)
-            unique = f"{uuid.uuid4().hex}_{filename}"
-            save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
-            image_file.save(save_path)
-            # Create PostImage record
-            img = PostImage(filename=unique, order=order)
-            p.images.append(img)
+            image_filename = save_upload_file(image_file, 'posts')
+            if image_filename:
+                # Create PostImage record
+                img = PostImage(filename=image_filename, order=order)
+                p.images.append(img)
     
     # Handle video upload (max 1)
     if video_file and video_file.filename != '':
-        filename = secure_filename(video_file.filename)
-        unique = f"{uuid.uuid4().hex}_{filename}"
-        save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
-        video_file.save(save_path)
-        p.video_filename = unique
+        video_filename = save_upload_file(video_file, 'posts')
+        if video_filename:
+            p.video_filename = video_filename
 
     db.session.add(p)
     db.session.commit()
@@ -539,20 +592,16 @@ def reply_post(post_id):
 
     # Save images
     for order, image_file in enumerate(image_files):
-        filename = secure_filename(image_file.filename)
-        unique = f"{uuid.uuid4().hex}_{filename}"
-        save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
-        image_file.save(save_path)
-        img = ReplyImage(filename=unique, order=order)
-        r.images.append(img)
+        image_filename = save_upload_file(image_file, 'replies')
+        if image_filename:
+            img = ReplyImage(filename=image_filename, order=order)
+            r.images.append(img)
 
     # Save video
     if video_file and video_file.filename != '':
-        filename = secure_filename(video_file.filename)
-        unique = f"{uuid.uuid4().hex}_{filename}"
-        save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
-        video_file.save(save_path)
-        r.video_filename = unique
+        video_filename = save_upload_file(video_file, 'replies')
+        if video_filename:
+            r.video_filename = video_filename
 
     db.session.add(r)
     db.session.commit()
@@ -577,30 +626,18 @@ def delete_post(post_id):
     
     # Remove attached image files
     for img in p.images:
-        try:
-            os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], img.filename))
-        except Exception:
-            pass
+        delete_upload_file(img.filename, 'posts')
     
     # Remove attached video file
     if p.video_filename:
-        try:
-            os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], p.video_filename))
-        except Exception:
-            pass
+        delete_upload_file(p.video_filename, 'posts')
 
     # Remove reply attachments (images/videos)
     for reply in p.replies:
         for rimg in reply.images:
-            try:
-                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], rimg.filename))
-            except Exception:
-                pass
+            delete_upload_file(rimg.filename, 'replies')
         if reply.video_filename:
-            try:
-                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], reply.video_filename))
-            except Exception:
-                pass
+            delete_upload_file(reply.video_filename, 'replies')
     
     db.session.delete(p)
     db.session.commit()
@@ -693,12 +730,9 @@ def register():
         u.set_password(password)
         u.display_name = display_name or None
         # handle avatar upload
-        if avatar and avatar.filename != '' and allowed_file(avatar.filename):
-            filename = secure_filename(avatar.filename)
-            unique = f"{uuid.uuid4().hex}_{filename}"
-            save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
-            avatar.save(save_path)
-            u.avatar_filename = unique
+        if avatar and avatar.filename != '':
+            avatar_filename = save_upload_file(avatar, 'avatars')
+            u.avatar_filename = avatar_filename
         db.session.add(u)
         db.session.commit()
         session['user_id'] = u.id
@@ -744,23 +778,14 @@ def settings():
         # handle avatar
         if request.form.get('remove_avatar'):
             if g.user.avatar_filename:
-                try:
-                    os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], g.user.avatar_filename))
-                except Exception:
-                    pass
+                delete_upload_file(g.user.avatar_filename, 'avatars')
                 g.user.avatar_filename = None
-        if avatar and avatar.filename != '' and allowed_file(avatar.filename):
+        if avatar and avatar.filename != '':
             # remove old
             if g.user.avatar_filename:
-                try:
-                    os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], g.user.avatar_filename))
-                except Exception:
-                    pass
-            filename = secure_filename(avatar.filename)
-            unique = f"{uuid.uuid4().hex}_{filename}"
-            save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique)
-            avatar.save(save_path)
-            g.user.avatar_filename = unique
+                delete_upload_file(g.user.avatar_filename, 'avatars')
+            avatar_filename = save_upload_file(avatar, 'avatars')
+            g.user.avatar_filename = avatar_filename
         db.session.commit()
         flash('設定を更新しました')
         # redirect back to caller when possible (modal or next param)
@@ -778,6 +803,90 @@ def settings():
     # GET: include current bio for the form
     bio = g.user.bio
     return render_template('settings.html', bio=bio)
+
+
+@bp.route('/account/delete', methods=['POST'])
+def delete_account():
+    """Delete user account and transfer community ownership to oldest follower"""
+    if not g.user:
+        flash('ログインが必要です')
+        return redirect(url_for('main.login'))
+    
+    # Get password confirmation
+    password = request.form.get('password')
+    if not g.user.check_password(password):
+        flash('パスワードが正しくありません')
+        return redirect(url_for('main.settings'))
+    
+    username = g.user.username
+    user_id = g.user.id
+    
+    # Delete user's posts and their attachments
+    user_posts = Post.query.filter_by(user_id=user_id).all()
+    for post in user_posts:
+        # Delete post images
+        for img in post.images:
+            delete_upload_file(img.filename, 'posts')
+        # Delete post video
+        if post.video_filename:
+            delete_upload_file(post.video_filename, 'posts')
+        # Delete post replies and their attachments
+        for reply in post.replies:
+            for rimg in reply.images:
+                delete_upload_file(rimg.filename, 'replies')
+            if reply.video_filename:
+                delete_upload_file(reply.video_filename, 'replies')
+            db.session.delete(reply)
+        # Delete the post from DB
+        db.session.delete(post)
+    
+    # Delete user's replies (not attached to posts being deleted)
+    user_replies = Reply.query.filter_by(user_id=user_id).all()
+    for reply in user_replies:
+        for rimg in reply.images:
+            delete_upload_file(rimg.filename, 'replies')
+        if reply.video_filename:
+            delete_upload_file(reply.video_filename, 'replies')
+        db.session.delete(reply)
+    
+    # Delete user's messages (sent and received)
+    sent_messages = Message.query.filter_by(sender_id=user_id).all()
+    for msg in sent_messages:
+        db.session.delete(msg)
+    
+    received_messages = Message.query.filter_by(recipient_id=user_id).all()
+    for msg in received_messages:
+        db.session.delete(msg)
+    
+    # Handle communities created by this user
+    communities_created = Community.query.filter_by(created_by=user_id).all()
+    for community in communities_created:
+        # Find oldest follower (earliest follow date) excluding the user being deleted
+        oldest_follow = CommunityFollow.query.filter_by(community_id=community.id).filter(
+            CommunityFollow.user_id != user_id
+        ).order_by(CommunityFollow.created_at.asc()).first()
+        if oldest_follow:
+            # Transfer ownership to oldest follower
+            community.created_by = oldest_follow.user_id
+        else:
+            # No other followers, delete the community
+            if community.icon_filename:
+                delete_upload_file(community.icon_filename, 'community_icons')
+            db.session.delete(community)
+    
+    # Delete user avatar
+    if g.user.avatar_filename:
+        delete_upload_file(g.user.avatar_filename, 'avatars')
+    
+    # Delete the user (now safe because posts are handled)
+    db.session.delete(g.user)
+    db.session.commit()
+    
+    # Clear session
+    session.clear()
+    
+    flash(f'アカウント「{username}」を削除しました')
+    return redirect(url_for('main.index'))
 
 
 @bp.route('/user/<username>')
@@ -1026,8 +1135,8 @@ def api_post_images(post_id):
     from flask import jsonify
     post = Post.query.get_or_404(post_id)
     
-    # Get all images sorted by order
-    images = [{'filename': img.filename, 'order': img.order} for img in sorted(post.images, key=lambda x: x.order)]
+    # Get all images sorted by order, with upload_type for proper URL construction
+    images = [{'filename': img.filename, 'order': img.order, 'upload_type': 'posts'} for img in sorted(post.images, key=lambda x: x.order)]
     return jsonify({'post_id': post_id, 'images': images})
 
 
@@ -1037,8 +1146,8 @@ def api_reply_images(reply_id):
     from flask import jsonify
     reply = Reply.query.get_or_404(reply_id)
     
-    # Get all images sorted by order
-    images = [{'filename': img.filename, 'order': img.order} for img in sorted(reply.images, key=lambda x: x.order)]
+    # Get all images sorted by order, with upload_type for proper URL construction
+    images = [{'filename': img.filename, 'order': img.order, 'upload_type': 'replies'} for img in sorted(reply.images, key=lambda x: x.order)]
     return jsonify({'reply_id': reply_id, 'images': images})
 
 

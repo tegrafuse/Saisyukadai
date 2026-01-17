@@ -19,7 +19,7 @@
             <div>
               {% if g.user.avatar_filename %}
                 <a href="{{ url_for('main.user', username=g.user.username) }}" class="text-decoration-none">
-                  <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                  <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename|build_upload_path('avatars')) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
                 </a>
               {% else %}
                 <a href="{{ url_for('main.user', username=g.user.username) }}" class="text-decoration-none">
@@ -31,7 +31,7 @@
             <div>
               {% if other.avatar_filename %}
                 <a href="{{ url_for('main.user', username=other.username) }}" class="text-decoration-none">
-                  <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                  <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename|build_upload_path('avatars')) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
                 </a>
               {% else %}
                 <a href="{{ url_for('main.user', username=other.username) }}" class="text-decoration-none">

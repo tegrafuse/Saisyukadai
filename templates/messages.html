@@ -17,7 +17,7 @@
           {% if p.user %}
             <a href="{{ url_for('main.messages', username=p.user.username) }}" class="list-group-item list-group-item-action d-flex align-items-center {% if request.args.get('username') == p.user.username %}active{% endif %}" data-partner-username="{{ p.user.username }}">
               {% if p.user.avatar_filename %}
-                <img src="{{ url_for('main.uploaded_file', filename=p.user.avatar_filename) }}" class="rounded-circle me-2" style="width:40px;height:40px;object-fit:cover">
+                <img src="{{ url_for('main.uploaded_file', filename=p.user.avatar_filename|build_upload_path('avatars')) }}" class="rounded-circle me-2" style="width:40px;height:40px;object-fit:cover">
               {% else %}
                 <div class="logo me-2" style="width:40px;height:40px;border-radius:50%"></div>
               {% endif %}
@@ -58,7 +58,7 @@
                   <div>
                     {% if g.user.avatar_filename %}
                       <a href="{{ url_for('main.user', username=g.user.username) }}" class="text-decoration-none">
-                        <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                        <img src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename|build_upload_path('avatars')) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
                       </a>
                     {% else %}
                       <a href="{{ url_for('main.user', username=g.user.username) }}" class="text-decoration-none">
@@ -70,7 +70,7 @@
                   <div>
                     {% if other.avatar_filename %}
                       <a href="{{ url_for('main.user', username=other.username) }}" class="text-decoration-none">
-                        <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
+                        <img src="{{ url_for('main.uploaded_file', filename=other.avatar_filename|build_upload_path('avatars')) }}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">
                       </a>
                     {% else %}
                       <a href="{{ url_for('main.user', username=other.username) }}" class="text-decoration-none">
@@ -85,7 +85,7 @@
                 {% endif %}
               </div>
             {% else %}
-              <div class="text-muted">No messages yet. Say hi!</div>
+              <div class="text-muted">メッセージがありません。挨拶をしましょう！</div>
             {% endfor %}
           </div>
 
@@ -93,9 +93,9 @@
             <form action="{{ url_for('main.messages') }}" method="post">
               <input type="hidden" name="recipient" value="{{ other.username }}">
               <div class="mb-2">
-                <textarea name="body" rows="3" class="input" placeholder="Write a message..."></textarea>
+                <textarea name="body" rows="3" class="input" placeholder="メッセージを入力..."></textarea>
               </div>
-              <button type="submit" class="btn">Send</button>
+              <button type="submit" class="btn">送信</button>
             </form>
           </div>
         </div>

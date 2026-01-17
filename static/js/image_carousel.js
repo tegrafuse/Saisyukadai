@@ -94,7 +94,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (galleryImages.length === 0) return;
 
     const currentImage = galleryImages[currentImageIndex];
-    const imageUrl = `/uploads/${currentImage.filename}`;
+    const uploadType = currentImage.upload_type || 'posts'; // Default to 'posts' if not specified
+    const imageUrl = `/uploads/${uploadType}/${currentImage.filename}`;
     carouselImage.src = imageUrl;
     imageCounter.textContent = `${currentImageIndex + 1} / ${galleryImages.length}`;
 

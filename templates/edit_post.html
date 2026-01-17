@@ -10,7 +10,7 @@
 
       {% if post.image_filename %}
         <div class="mb-2">
-          <img src="{{ url_for('main.uploaded_file', filename=post.image_filename) }}" class="img-fluid rounded" style="max-width:320px">
+          <img src="{{ url_for('main.uploaded_file', filename=post.image_filename|build_upload_path('posts')) }}" class="img-fluid rounded" style="max-width:320px">
           <div class="form-check mt-2">
             <input class="form-check-input" type="checkbox" name="remove_image" id="remove_image" value="1">
             <label class="form-check-label" for="remove_image">画像を削除</label>

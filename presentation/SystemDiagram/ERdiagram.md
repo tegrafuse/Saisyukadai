@@ -65,10 +65,12 @@ Community (
 **フォレインキー制約:**
 - `created_by → User.id`: コミュニティの設立者
   - **NULL許可**: 公式コミュニティ（created_by が NULL）を許容
-  - **カスケード動作**: User削除時の動作は未定義（通常は SET NULL または RESTRICT）
+  - **User削除時の動作**: 設立者が削除される場合、最古参フォロワーに所有権を譲渡（応用レベルの処理）
+    - フォロワーが存在しない場合のみコミュニティも削除
 
 **正規化ポイント:**
 - コミュニティ固有の情報のみ保持（設立者情報は User テーブルで管理）
+- 複合ユニーク制約により、重複作成を防止
 
 ---
 
@@ -195,13 +197,15 @@ Message (
 ```
 
 **フォレインキー制約:**
-1. `sender_id → User.id`: メッセージ送信者
+1. `user_id → User.id`: メッセージ送信者
    - **NOT NULL**: 送信者は必須
    - **明示的FK指定**: SQLAlchemy で `foreign_keys` パラメータを使用
+   - **削除時の動作**: ユーザー削除時にそのユーザーが送信したメッセージも削除（CASCADE）
 
 2. `recipient_id → User.id`: メッセージ受信者
    - **NULL許可**: ブロードキャストメッセージ用（将来拡張）
    - **同一テーブルへの複数FK**: User テーブルに2つの関連（送信/受信）
+   - **削除時の動作**: ユーザー削除時にそのユーザーが受信したメッセージも削除（CASCADE）
 
 **正規化ポイント:**
 - 送信者と受信者を別カラムで管理（3NF: どちらも直接主キーに依存）
@@ -399,7 +403,7 @@ erDiagram
 
 | 親テーブル削除 | 影響を受ける子テーブル | 動作 |
 |--------------|-------------------|------|
-| User | Post, Reply, Message, CommunityFollow, PostLike, ReplyLike | CASCADE（すべて削除） |
+| User | Post, Reply, Message (送信/受信両方), CommunityFollow, PostLike, ReplyLike, Community (created_by) | CASCADE（すべて削除）、ただし Community の場合は所有権を最古参フォロワーに譲渡 |
 | Community | Post, CommunityFollow | CASCADE（すべて削除） |
 | Post | PostImage, Reply, PostLike | CASCADE（すべて削除） |
 | Reply (親) | Reply (子), ReplyLike, ReplyImage | CASCADE（ツリー全削除） |

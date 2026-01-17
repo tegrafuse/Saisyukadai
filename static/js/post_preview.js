@@ -240,14 +240,14 @@ document.addEventListener('DOMContentLoaded', function(){
       if(hid.value === '1'){
         // undo
         hid.value = '';
-        btn.textContent = 'Delete avatar';
+        btn.textContent = 'アバターを削除';
         btn.classList.remove('btn-danger');
         btn.classList.add('btn-outline-danger');
         if(currentImg) currentImg.style.display = '';
       } else {
         // mark for deletion
         hid.value = '1';
-        btn.textContent = 'Marked for deletion (undo)';
+        btn.textContent = '削除取り消し';
         btn.classList.remove('btn-outline-danger');
         btn.classList.add('btn-danger');
         if(currentImg) currentImg.style.display = 'none';

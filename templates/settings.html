@@ -20,7 +20,7 @@
         </div>
         {% if g.user.avatar_filename %}
           <div class="mt-2" id="current-avatar-block-settings">
-            <img id="current-avatar-img-settings" src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename) }}" class="rounded" style="width:64px;height:64px;object-fit:cover">
+            <img id="current-avatar-img-settings" src="{{ url_for('main.uploaded_file', filename=g.user.avatar_filename|build_upload_path('avatars')) }}" class="rounded" style="width:64px;height:64px;object-fit:cover">
             <input type="hidden" name="remove_avatar" id="remove_avatar_input_settings" value="">
             <div class="mt-2">
               <button type="button" id="remove_avatar_button" class="btn btn-sm btn-outline-danger">アバターを削除</button>
@@ -30,5 +30,40 @@
       </div>
       <button type="submit" class="btn">保存</button>
     </form>
+    
+    <!-- Delete Account Section -->
+    <hr class="my-4">
+    <h3 class="h6 text-danger mb-3">危険ゾーン</h3>
+    <button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
+      アカウントを削除
+    </button>
+  </div>
+
+  <!-- Delete Account Modal -->
+  <div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="deleteAccountLabel">アカウントを削除</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning" role="alert">
+            <strong>警告：</strong> この操作は取り消せません。アカウントとその関連データが完全に削除されます。
+          </div>
+          <p>ただし、あなたが作成したコミュニティについては、最も古いフォロワー（最初にフォローした人）に管理者権限が譲渡されます。フォロワーがいないコミュニティは削除されます。</p>
+          <form action="{{ url_for('main.delete_account') }}" method="post" id="deleteAccountForm">
+            <div class="mb-3">
+              <label for="deletePassword" class="form-label">パスワードを入力して確認</label>
+              <input type="password" name="password" id="deletePassword" class="form-control" required>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" form="deleteAccountForm" class="btn btn-danger">削除する</button>
+        </div>
+      </div>
+    </div>
   </div>
 {% endblock %}
