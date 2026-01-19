@@ -10,10 +10,7 @@
             <div class="me-2 text-end" style="max-width:70%">
               <div class="bubble bubble-right">{{ m.body }}</div>
               <div class="text-muted small mt-1">
-                {{ m.created_at }}
-                {% if m.recipient_id and m.is_read %}
-                  <span class="ms-1 text-muted" style="font-size:0.85em">✓ 既読</span>
-                {% endif %}
+                <span class="msg-time">{{ m.created_at }}</span><span class="msg-read-mark">{% if m.recipient_id and m.is_read %}<span class="ms-1 text-muted" style="font-size:0.85em">✓ 既読</span>{% endif %}</span>
               </div>
             </div>
             <div>
@@ -63,6 +60,7 @@
   <input type="hidden" id="thread-username-data" value="{{ other.username }}">
   <script>
     document.body.dataset.currentUserId = "{{ g.user.id }}";
+    document.body.dataset.currentUsername = "{{ g.user.username }}";
     document.body.dataset.otherUsername = "{{ other.username }}";
   </script>
   <script src="{{ url_for('static', filename='js/realtime_messages.js') }}"></script>

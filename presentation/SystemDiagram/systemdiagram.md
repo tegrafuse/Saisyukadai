@@ -119,79 +119,99 @@ erDiagram
     USER ||--o{ MESSAGE : sends
     USER ||--o{ MESSAGE : receives
     USER ||--o{ REPLY : writes
-    USER ||--o{ COMMUNITY-FOLLOW : has
-    USER ||--o{ POST-LIKE : gives
-    USER ||--o{ REPLY-LIKE : gives
+    USER ||--o{ COMMUNITY_FOLLOW : has
+    USER ||--o{ POST_LIKE : gives
+    USER ||--o{ REPLY_LIKE : gives
     
     COMMUNITY ||--o{ POST : contains
-    COMMUNITY ||--o{ COMMUNITY-FOLLOW : has
+    COMMUNITY ||--o{ COMMUNITY_FOLLOW : has
     
-    POST ||--o{ POST-IMAGE : has
+    POST ||--o{ POST_IMAGE : has
     POST ||--o{ REPLY : has
-    POST ||--o{ POST-LIKE : receives
+    POST ||--o{ POST_LIKE : receives
     
-    REPLY ||--o{ REPLY-IMAGE : has
-    REPLY ||--o{ REPLY-LIKE : receives
+    REPLY ||--o{ REPLY_IMAGE : has
+    REPLY ||--o{ REPLY_LIKE : receives
     REPLY ||--o{ REPLY : parent_of
     
-    USER : int id PK
-    USER : string username UK
-    USER : string password_hash
-    USER : string display_name
-    USER : string avatar_filename
-    USER : text bio
+    USER {
+        int id PK
+        string username UK
+        string password_hash
+        string display_name
+        string avatar_filename
+        text bio
+    }
     
-    POST : int id PK
-    POST : text body
-    POST : datetime created_at
-    POST : int user_id FK
-    POST : int community_id FK
-    POST : string video_filename
+    POST {
+        int id PK
+        text body
+        datetime created_at
+        int user_id FK
+        int community_id FK
+        string video_filename
+    }
     
-    POST-IMAGE : int id PK
-    POST-IMAGE : int post_id FK
-    POST-IMAGE : string filename
-    POST-IMAGE : int order
+    POST_IMAGE {
+        int id PK
+        int post_id FK
+        string filename
+        int order
+    }
     
-    MESSAGE : int id PK
-    MESSAGE : text body
-    MESSAGE : datetime created_at
-    MESSAGE : int sender_id FK
-    MESSAGE : int recipient_id FK
-    MESSAGE : boolean is_read
-    MESSAGE : datetime read_at
+    MESSAGE {
+        int id PK
+        text body
+        datetime created_at
+        int sender_id FK
+        int recipient_id FK
+        boolean is_read
+        datetime read_at
+    }
     
-    REPLY : int id PK
-    REPLY : text body
-    REPLY : datetime created_at
-    REPLY : int post_id FK
-    REPLY : int user_id FK
-    REPLY : int parent_id FK
-    REPLY : string video_filename
+    REPLY {
+        int id PK
+        text body
+        datetime created_at
+        int post_id FK
+        int user_id FK
+        int parent_id FK
+        string video_filename
+    }
     
-    REPLY-IMAGE : int id PK
-    REPLY-IMAGE : int reply_id FK
-    REPLY-IMAGE : string filename
-    REPLY-IMAGE : int order
+    REPLY_IMAGE {
+        int id PK
+        int reply_id FK
+        string filename
+        int order
+    }
     
-    COMMUNITY : int id PK
-    COMMUNITY : string name UK
-    COMMUNITY : text description
-    COMMUNITY : string icon_filename
-    COMMUNITY : int created_by FK
-    COMMUNITY : datetime created_at
+    COMMUNITY {
+        int id PK
+        string name UK
+        text description
+        string icon_filename
+        int created_by FK
+        datetime created_at
+    }
     
-    COMMUNITY-FOLLOW : int id PK
-    COMMUNITY-FOLLOW : int user_id FK
-    COMMUNITY-FOLLOW : int community_id FK
+    COMMUNITY_FOLLOW {
+        int id PK
+        int user_id FK
+        int community_id FK
+    }
     
-    POST-LIKE : int id PK
-    POST-LIKE : int user_id FK
-    POST-LIKE : int post_id FK
+    POST_LIKE {
+        int id PK
+        int user_id FK
+        int post_id FK
+    }
     
-    REPLY-LIKE : int id PK
-    REPLY-LIKE : int user_id FK
-    REPLY-LIKE : int reply_id FK
+    REPLY_LIKE {
+        int id PK
+        int user_id FK
+        int reply_id FK
+    }
 ```
 
 ---

@@ -1087,6 +1087,9 @@ def api_get_messages(username):
     # Convert messages to JSON format
     messages_data = []
     for m in conv:
+        avatar_path = None
+        if m.sender and m.sender.avatar_filename:
+            avatar_path = f"avatars/{m.sender.avatar_filename}"
         messages_data.append({
             'id': m.id,
             'body': m.body,
@@ -1094,7 +1097,7 @@ def api_get_messages(username):
             'recipient_id': m.recipient_id,
             'created_at': m.created_at.strftime('%Y-%m-%d %H:%M:%S'),
             'is_read': m.is_read,
-            'sender_avatar': m.sender.avatar_filename if m.sender else None,
+            'sender_avatar': avatar_path,
             'sender_display_name': m.sender.display_name or m.sender.username if m.sender else None
         })
     

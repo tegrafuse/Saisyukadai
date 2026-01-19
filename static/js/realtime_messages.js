@@ -100,7 +100,9 @@
             msgEl.dataset.messageId = msg.id;
             
             const isSender = msg.sender_id === currentUserId;
-            const avatar = msg.sender_avatar ? `<img src="/uploads/${msg.sender_avatar}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">` : '<div class="logo" style="width:36px;height:36px"></div>';
+            const senderUsername = isSender ? document.body.dataset.currentUsername : username;
+            const avatarImg = msg.sender_avatar ? `<img src="/uploads/${msg.sender_avatar}" class="rounded-circle" style="width:36px;height:36px;object-fit:cover">` : '<div class="logo" style="width:36px;height:36px"></div>';
+            const avatar = `<a href="/user/${senderUsername}" class="text-decoration-none">${avatarImg}</a>`;
             
             if (isSender) {
               msgEl.innerHTML = `
@@ -131,7 +133,7 @@
               if (msgEl) {
                 const readMark = msgEl.querySelector('.msg-read-mark');
                 if (readMark) {
-                  readMark.innerHTML = '<span class="ms-1 text-info">✓</span>';
+                  readMark.innerHTML = '<span class="ms-1 text-muted" style="font-size:0.85em">✓ 既読</span>';
                 }
               }
             } else if (messageStates[msg.id] === undefined) {
@@ -148,10 +150,10 @@
         }
       })
       .catch(e => console.log('poll error', e));
-  }, 2000);
+  }, 1000);
   
-  // Update partner badge every 3 seconds to keep it in sync
-  setInterval(updatePartnerBadge, 3000);
+  // Update partner badge every 1 second to keep it in sync
+  setInterval(updatePartnerBadge, 1000);
   
   // Form submission
   form.addEventListener('submit', e => {
