@@ -10,10 +10,10 @@ Windows以外の場合は`python -m venv venv`, `source venv/bin/activate`, `pip
 ---
 
 ## デモ動画
-
-https://github.com/user-attachments/assets/demomovie.mp4
+https://github.com/user-attachments/assets/b4ba40ca-2325-4a2e-b1a6-6d900fcf36dd
 
 ---
+<br>読み上げ音声 VOICEVOX:四国めたん<br>
 
 ## アーキテクチャ
 
