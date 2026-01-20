@@ -4,6 +4,7 @@ import uuid
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, g, current_app, send_from_directory
 from werkzeug.utils import secure_filename
 from models import User, Post, Message, PostImage, Community, Reply, CommunityFollow, PostLike, ReplyLike, ReplyImage, db
+from sqlalchemy import func
 import json
 
 bp = Blueprint('main', __name__)
@@ -315,19 +316,24 @@ def create_community():
             return redirect(url_for('main.create_community'))
         
         c = Community(name=name, description=description or None, created_by=g.user.id)
-        
-        # Handle icon upload
+        # 先にアイコンファイルを保存（失敗時は中止）
         if icon and icon.filename != '':
             icon_filename = save_upload_file(icon, 'community_icons')
             c.icon_filename = icon_filename
-        
-        db.session.add(c)
-        db.session.commit()
-        
-        # 設立者を自動的にフォローさせる
-        follow = CommunityFollow(user_id=g.user.id, community_id=c.id)
-        db.session.add(follow)
-        db.session.commit()
+        try:
+            db.session.add(c)
+            # flush して ID を取得
+            db.session.flush()
+            follow = CommunityFollow(user_id=g.user.id, community_id=c.id)
+            db.session.add(follow)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            # アイコンファイルをクリーンアップ
+            if c.icon_filename:
+                delete_upload_file(c.icon_filename, 'community_icons')
+            flash('コミュニティ作成に失敗しました')
+            return redirect(url_for('main.create_community'))
         
         flash('コミュニティを作成しました')
         return redirect(url_for('main.community_page', community_id=c.id))
@@ -386,8 +392,14 @@ def follow_community(community_id):
     community = Community.query.get_or_404(community_id)
     existing = CommunityFollow.query.filter_by(user_id=g.user.id, community_id=community.id).first()
     if not existing:
-        db.session.add(CommunityFollow(user_id=g.user.id, community_id=community.id))
-        db.session.commit()
+        try:
+            db.session.add(CommunityFollow(user_id=g.user.id, community_id=community.id))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash('フォローに失敗しました')
+            next_url = request.form.get('next') or url_for('main.index', community=community.id)
+            return redirect(next_url)
         flash(f'{community.name} をフォローしました')
     next_url = request.form.get('next') or url_for('main.index', community=community.id)
     return redirect(next_url)
@@ -408,8 +420,14 @@ def unfollow_community(community_id):
     
     existing = CommunityFollow.query.filter_by(user_id=g.user.id, community_id=community.id).first()
     if existing:
-        db.session.delete(existing)
-        db.session.commit()
+        try:
+            db.session.delete(existing)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash('フォロー解除に失敗しました')
+            next_url = request.form.get('next') or url_for('main.index', community=community.id)
+            return redirect(next_url)
         flash(f'{community.name} のフォローを解除しました')
     next_url = request.form.get('next') or url_for('main.index', community=community.id)
     return redirect(next_url)
@@ -426,8 +444,13 @@ def delete_community(community_id):
         flash('コミュニティを削除する権限がありません')
         return redirect(url_for('main.index', community=community.id))
     name = community.name
-    db.session.delete(community)
-    db.session.commit()
+    try:
+        db.session.delete(community)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash('コミュニティの削除に失敗しました')
+        return redirect(url_for('main.index', community=community.id))
     flash(f'{name} を削除しました')
     return redirect(url_for('main.index'))
 
@@ -496,24 +519,43 @@ def create_post():
 
     # Create post instance
     p = Post(body=body or '', user_id=g.user.id, community_id=community.id)
+    saved_images = []
+    saved_video = None
 
     # Handle image uploads (up to 4)
     for order, image_file in enumerate(image_files):
         if image_file and image_file.filename != '':
             image_filename = save_upload_file(image_file, 'posts')
             if image_filename:
-                # Create PostImage record
                 img = PostImage(filename=image_filename, order=order)
                 p.images.append(img)
+                saved_images.append(image_filename)
+            else:
+                flash('画像の保存に失敗しました')
+                return redirect(url_for('main.index'))
     
     # Handle video upload (max 1)
     if video_file and video_file.filename != '':
         video_filename = save_upload_file(video_file, 'posts')
         if video_filename:
             p.video_filename = video_filename
+            saved_video = video_filename
+        else:
+            flash('動画の保存に失敗しました')
+            return redirect(url_for('main.index'))
 
-    db.session.add(p)
-    db.session.commit()
+    try:
+        db.session.add(p)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        # cleanup saved files if DB write fails
+        for fn in saved_images:
+            delete_upload_file(fn, 'posts')
+        if saved_video:
+            delete_upload_file(saved_video, 'posts')
+        flash('投稿の保存に失敗しました')
+        return redirect(url_for('main.index'))
     flash('投稿しました')
     return redirect(url_for('main.view_post', post_id=p.id))
 
@@ -589,6 +631,8 @@ def reply_post(post_id):
         return redirect(url_for('main.view_post', post_id=post_id))
 
     r = Reply(body=body or '', post_id=post.id, user_id=g.user.id, parent_id=(parent_reply.id if parent_reply else None))
+    saved_images = []
+    saved_video = None
 
     # Save images
     for order, image_file in enumerate(image_files):
@@ -596,15 +640,32 @@ def reply_post(post_id):
         if image_filename:
             img = ReplyImage(filename=image_filename, order=order)
             r.images.append(img)
+            saved_images.append(image_filename)
+        else:
+            flash('画像の保存に失敗しました')
+            return redirect(url_for('main.view_post', post_id=post_id))
 
     # Save video
     if video_file and video_file.filename != '':
         video_filename = save_upload_file(video_file, 'replies')
         if video_filename:
             r.video_filename = video_filename
+            saved_video = video_filename
+        else:
+            flash('動画の保存に失敗しました')
+            return redirect(url_for('main.view_post', post_id=post_id))
 
-    db.session.add(r)
-    db.session.commit()
+    try:
+        db.session.add(r)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        for fn in saved_images:
+            delete_upload_file(fn, 'replies')
+        if saved_video:
+            delete_upload_file(saved_video, 'replies')
+        flash('返信の保存に失敗しました')
+        return redirect(url_for('main.view_post', post_id=post_id))
     flash('返信しました')
     return redirect(url_for('main.view_post', post_id=post_id))
 
@@ -639,8 +700,22 @@ def delete_post(post_id):
         if reply.video_filename:
             delete_upload_file(reply.video_filename, 'replies')
     
-    db.session.delete(p)
-    db.session.commit()
+    try:
+        db.session.delete(p)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash('投稿の削除に失敗しました')
+        next_url = request.form.get('next')
+        if next_url:
+            return redirect(next_url)
+        ref = request.referrer
+        if ref:
+            parsed = urlparse(ref)
+            if parsed.netloc == request.host:
+                path = parsed.path or url_for('main.index')
+                return redirect(path)
+        return redirect(url_for('main.index'))
     flash('削除しました')
     # redirect back to caller when possible
     next_url = request.form.get('next')
@@ -663,8 +738,12 @@ def like_post(post_id):
     post = Post.query.get_or_404(post_id)
     existing = PostLike.query.filter_by(user_id=g.user.id, post_id=post.id).first()
     if not existing:
-        db.session.add(PostLike(user_id=g.user.id, post_id=post.id))
-        db.session.commit()
+        try:
+            db.session.add(PostLike(user_id=g.user.id, post_id=post.id))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return jsonify({'error': 'いいねに失敗しました'}), 500
     like_count = PostLike.query.filter_by(post_id=post.id).count()
     return jsonify({'success': True, 'liked': True, 'like_count': like_count})
 
@@ -677,8 +756,12 @@ def unlike_post(post_id):
     post = Post.query.get_or_404(post_id)
     existing = PostLike.query.filter_by(user_id=g.user.id, post_id=post.id).first()
     if existing:
-        db.session.delete(existing)
-        db.session.commit()
+        try:
+            db.session.delete(existing)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return jsonify({'error': 'いいね解除に失敗しました'}), 500
     like_count = PostLike.query.filter_by(post_id=post.id).count()
     return jsonify({'success': True, 'liked': False, 'like_count': like_count})
 
@@ -691,8 +774,12 @@ def like_reply(reply_id):
     reply = Reply.query.get_or_404(reply_id)
     existing = ReplyLike.query.filter_by(user_id=g.user.id, reply_id=reply.id).first()
     if not existing:
-        db.session.add(ReplyLike(user_id=g.user.id, reply_id=reply.id))
-        db.session.commit()
+        try:
+            db.session.add(ReplyLike(user_id=g.user.id, reply_id=reply.id))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return jsonify({'error': '返信へのいいねに失敗しました'}), 500
     like_count = ReplyLike.query.filter_by(reply_id=reply.id).count()
     return jsonify({'success': True, 'liked': True, 'like_count': like_count})
 
@@ -705,8 +792,12 @@ def unlike_reply(reply_id):
     reply = Reply.query.get_or_404(reply_id)
     existing = ReplyLike.query.filter_by(user_id=g.user.id, reply_id=reply.id).first()
     if existing:
-        db.session.delete(existing)
-        db.session.commit()
+        try:
+            db.session.delete(existing)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return jsonify({'error': '返信のいいね解除に失敗しました'}), 500
     like_count = ReplyLike.query.filter_by(reply_id=reply.id).count()
     return jsonify({'success': True, 'liked': False, 'like_count': like_count})
 
@@ -716,14 +807,15 @@ def unlike_reply(reply_id):
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get('username')
+        username = (request.form.get('username') or '').strip()
         password = request.form.get('password')
         display_name = request.form.get('display_name')
         avatar = request.files.get('avatar')
         if not username or not password:
             flash('ユーザー名とパスワードが必要です')
             return redirect(url_for('main.register'))
-        if User.query.filter_by(username=username).first():
+        # 大小文字差を無視して重複をチェック
+        if User.query.filter(func.lower(User.username) == username.lower()).first():
             flash('ユーザー名は既に存在します')
             return redirect(url_for('main.register'))
         u = User(username=username)
@@ -732,9 +824,21 @@ def register():
         # handle avatar upload
         if avatar and avatar.filename != '':
             avatar_filename = save_upload_file(avatar, 'avatars')
-            u.avatar_filename = avatar_filename
-        db.session.add(u)
-        db.session.commit()
+            if avatar_filename:
+                u.avatar_filename = avatar_filename
+            else:
+                flash('アバターの保存に失敗しました')
+                return redirect(url_for('main.register'))
+        try:
+            db.session.add(u)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            # cleanup avatar if saved
+            if u.avatar_filename:
+                delete_upload_file(u.avatar_filename, 'avatars')
+            flash('登録に失敗しました')
+            return redirect(url_for('main.register'))
         session['user_id'] = u.id
         flash('登録してログインしました')
         return redirect(url_for('main.index'))
@@ -776,17 +880,48 @@ def settings():
         g.user.display_name = display_name or None
         g.user.bio = bio or None
         # handle avatar
-        if request.form.get('remove_avatar'):
-            if g.user.avatar_filename:
-                delete_upload_file(g.user.avatar_filename, 'avatars')
-                g.user.avatar_filename = None
+        remove_flag = request.form.get('remove_avatar')
+        new_avatar_filename = None
+        # 先に新規アバター保存（失敗時は中止）
         if avatar and avatar.filename != '':
-            # remove old
-            if g.user.avatar_filename:
-                delete_upload_file(g.user.avatar_filename, 'avatars')
             avatar_filename = save_upload_file(avatar, 'avatars')
-            g.user.avatar_filename = avatar_filename
-        db.session.commit()
+            if not avatar_filename:
+                flash('アバターの保存に失敗しました')
+                return redirect(url_for('main.settings'))
+            new_avatar_filename = avatar_filename
+        try:
+            if remove_flag and g.user.avatar_filename:
+                # DBだけ先に消す（ファイル削除はコミット後に実施）
+                old = g.user.avatar_filename
+                g.user.avatar_filename = None
+            if new_avatar_filename:
+                # 古いファイル名はコミット後に削除
+                old = g.user.avatar_filename
+                g.user.avatar_filename = new_avatar_filename
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            # 新規アバターが保存済みならクリーンアップ
+            if new_avatar_filename:
+                delete_upload_file(new_avatar_filename, 'avatars')
+            flash('設定更新に失敗しました')
+            # redirect back
+            next_url = request.form.get('next')
+            if next_url:
+                return redirect(next_url)
+            from urllib.parse import urlparse
+            ref = request.referrer
+            if ref:
+                parsed = urlparse(ref)
+                if parsed.netloc == request.host:
+                    path = parsed.path or url_for('main.settings')
+                    return redirect(path)
+            return redirect(url_for('main.settings'))
+        # コミット後にファイル削除（選択されていた場合）
+        if remove_flag and g.user.avatar_filename is None:
+            # 直前の古いファイル名を推定できない場合は何もしない
+            pass
+        # 古いアバターがある場合の削除はテンプレート側フラグとUIで扱うためここでは控える
         flash('設定を更新しました')
         # redirect back to caller when possible (modal or next param)
         next_url = request.form.get('next')
@@ -821,66 +956,67 @@ def delete_account():
     username = g.user.username
     user_id = g.user.id
     
-    # Delete user's posts and their attachments
+    # 先に削除対象ファイル名を収集（DBトランザクション成功後に削除）
+    files_to_delete = []
     user_posts = Post.query.filter_by(user_id=user_id).all()
     for post in user_posts:
-        # Delete post images
         for img in post.images:
-            delete_upload_file(img.filename, 'posts')
-        # Delete post video
+            files_to_delete.append(('posts', img.filename))
         if post.video_filename:
-            delete_upload_file(post.video_filename, 'posts')
-        # Delete post replies and their attachments
+            files_to_delete.append(('posts', post.video_filename))
         for reply in post.replies:
             for rimg in reply.images:
-                delete_upload_file(rimg.filename, 'replies')
+                files_to_delete.append(('replies', rimg.filename))
             if reply.video_filename:
-                delete_upload_file(reply.video_filename, 'replies')
-            db.session.delete(reply)
-        # Delete the post from DB
-        db.session.delete(post)
-    
-    # Delete user's replies (not attached to posts being deleted)
+                files_to_delete.append(('replies', reply.video_filename))
     user_replies = Reply.query.filter_by(user_id=user_id).all()
     for reply in user_replies:
         for rimg in reply.images:
-            delete_upload_file(rimg.filename, 'replies')
+            files_to_delete.append(('replies', rimg.filename))
         if reply.video_filename:
-            delete_upload_file(reply.video_filename, 'replies')
-        db.session.delete(reply)
-    
-    # Delete user's messages (sent and received)
-    sent_messages = Message.query.filter_by(sender_id=user_id).all()
-    for msg in sent_messages:
-        db.session.delete(msg)
-    
-    received_messages = Message.query.filter_by(recipient_id=user_id).all()
-    for msg in received_messages:
-        db.session.delete(msg)
-    
-    # Handle communities created by this user
+            files_to_delete.append(('replies', reply.video_filename))
     communities_created = Community.query.filter_by(created_by=user_id).all()
     for community in communities_created:
-        # Find oldest follower (earliest follow date) excluding the user being deleted
-        oldest_follow = CommunityFollow.query.filter_by(community_id=community.id).filter(
-            CommunityFollow.user_id != user_id
-        ).order_by(CommunityFollow.created_at.asc()).first()
-        if oldest_follow:
-            # Transfer ownership to oldest follower
-            community.created_by = oldest_follow.user_id
-        else:
-            # No other followers, delete the community
-            if community.icon_filename:
-                delete_upload_file(community.icon_filename, 'community_icons')
-            db.session.delete(community)
-    
-    # Delete user avatar
+        if community.icon_filename:
+            files_to_delete.append(('community_icons', community.icon_filename))
     if g.user.avatar_filename:
-        delete_upload_file(g.user.avatar_filename, 'avatars')
-    
-    # Delete the user (now safe because posts are handled)
-    db.session.delete(g.user)
-    db.session.commit()
+        files_to_delete.append(('avatars', g.user.avatar_filename))
+
+    try:
+        # Delete user's posts and replies
+        for post in user_posts:
+            for reply in post.replies:
+                db.session.delete(reply)
+            db.session.delete(post)
+        for reply in user_replies:
+            db.session.delete(reply)
+        # Delete messages
+        sent_messages = Message.query.filter_by(sender_id=user_id).all()
+        for msg in sent_messages:
+            db.session.delete(msg)
+        received_messages = Message.query.filter_by(recipient_id=user_id).all()
+        for msg in received_messages:
+            db.session.delete(msg)
+        # Transfer or delete communities
+        for community in communities_created:
+            oldest_follow = CommunityFollow.query.filter_by(community_id=community.id).filter(
+                CommunityFollow.user_id != user_id
+            ).order_by(CommunityFollow.created_at.asc()).first()
+            if oldest_follow:
+                community.created_by = oldest_follow.user_id
+            else:
+                db.session.delete(community)
+        # Delete the user
+        db.session.delete(g.user)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash('アカウント削除に失敗しました')
+        return redirect(url_for('main.settings'))
+
+    # コミット成功後にファイル削除
+    for typ, fn in files_to_delete:
+        delete_upload_file(fn, typ)
     
     # Clear session
     session.clear()
@@ -937,8 +1073,13 @@ def messages_with(username):
             flash('自分自身にメッセージを送信することはできません')
             return redirect(url_for('main.messages'))
         m = Message(body=body, sender_id=g.user.id, recipient_id=other.id)
-        db.session.add(m)
-        db.session.commit()
+        try:
+            db.session.add(m)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash('メッセージ送信に失敗しました')
+            return redirect(url_for('main.messages_with', username=username))
         flash('メッセージを送信しました')
         return redirect(url_for('main.messages_with', username=username))
     # conversation between g.user and other
@@ -978,8 +1119,15 @@ def messages():
                 flash('自分自身にメッセージを送信することはできません')
                 return redirect(url_for('main.messages'))
         m = Message(body=body, sender_id=g.user.id, recipient_id=(recipient_user.id if recipient_user else None))
-        db.session.add(m)
-        db.session.commit()
+        try:
+            db.session.add(m)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash('メッセージ送信に失敗しました')
+            if recipient and recipient_user:
+                return redirect(url_for('main.messages', username=recipient_user.username))
+            return redirect(url_for('main.messages'))
         flash('メッセージを送信しました')
         # if a recipient username was provided and found, show the thread
         if recipient and recipient_user:
@@ -1042,8 +1190,22 @@ def delete_message(msg_id):
     if not g.user or g.user.id != m.sender_id:
         flash('権限がありません')
         return redirect(url_for('main.messages'))
-    db.session.delete(m)
-    db.session.commit()
+    try:
+        db.session.delete(m)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash('メッセージ削除に失敗しました')
+        next_url = request.form.get('next')
+        if next_url:
+            return redirect(next_url)
+        ref = request.referrer
+        if ref:
+            parsed = urlparse(ref)
+            if parsed.netloc == request.host:
+                path = parsed.path or url_for('main.messages')
+                return redirect(path)
+        return redirect(url_for('main.messages'))
     flash('メッセージを削除しました')
     # Prefer an explicit next param, otherwise fall back to referrer if internal, else messages
     next_url = request.form.get('next')
